@@ -1,0 +1,19 @@
+[Unit]
+Description=Lobster Price Monitor board server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=erik
+WorkingDirectory=/opt/lobster-price-monitor
+Environment=PORT=8765
+Environment=BIND=0.0.0.0
+ExecStart=/opt/lobster-price-monitor/.venv/bin/python scripts/serve_board.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/opt/lobster-price-monitor/logs/serve.stdout.log
+StandardError=append:/opt/lobster-price-monitor/logs/serve.stderr.log
+
+[Install]
+WantedBy=multi-user.target

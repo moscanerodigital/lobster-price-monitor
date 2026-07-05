@@ -1,0 +1,23 @@
+# Example crontab for lobster-price-monitor (Linux / Chromebox)
+# Edit paths, then: crontab -e
+#
+# Weekdays: 4x/day (07:00, 11:00, 15:00, 19:00 local)
+# Weekends: 2x/day (09:00, 17:00 local)
+# All scrapes use --no-alerts unless you explicitly remove that flag.
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+LOBSTER_ROOT=/opt/lobster-price-monitor
+LOBSTER_PY=$LOBSTER_ROOT/.venv/bin/python
+
+# Weekday scrapes (Mon–Fri)
+0 7,11,15,19 * * 1-5 cd $LOBSTER_ROOT && $LOBSTER_PY scripts/scrape_markets.py --no-alerts >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
+
+# Weekend scrapes (Sat–Sun)
+0 9,17 * * 0,6 cd $LOBSTER_ROOT && $LOBSTER_PY scripts/scrape_markets.py --no-alerts >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
+
+# Optional: daily health snapshot (stdout + logs/)
+15 6 * * * cd $LOBSTER_ROOT && $LOBSTER_PY scripts/health_check.py --log >> logs/health.stdout.log 2>&1
+
+# Note: run the board server separately (systemd service or a @reboot line):
+# @reboot cd $LOBSTER_ROOT && PORT=8765 BIND=0.0.0.0 $LOBSTER_PY scripts/serve_board.py >> logs/serve.stdout.log 2>> logs/serve.stderr.log

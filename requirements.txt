@@ -1,0 +1,5 @@
+facebook-scraper
+lxml_html_clean
+curl_cffi
+browser-cookie3
+pytest>=8.0

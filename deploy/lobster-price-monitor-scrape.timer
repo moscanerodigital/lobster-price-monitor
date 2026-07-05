@@ -1,0 +1,11 @@
+[Unit]
+Description=Lobster Price Monitor scrape timer (weekday cadence)
+Requires=lobster-price-monitor-scrape.service
+
+[Timer]
+OnCalendar=Mon..Fri 07:00,11:00,15:00,19:00
+Persistent=true
+Unit=lobster-price-monitor-scrape.service
+
+[Install]
+WantedBy=timers.target

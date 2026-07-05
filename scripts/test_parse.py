@@ -13,7 +13,7 @@ SAMPLES = [
             ("lobster_tier", "chicks", 8.75, "lb"),
             ("lobster_tier", "old_shell", 10.75, "lb"),
             ("lobster_tier", "hard_shell", 11.95, "lb"),
-            ("lobster_tier", "2lb_plus", 12.75, "lb"),
+            ("lobster_tier", "2lb_plus_hard_shell", 12.75, "lb"),
         ],
     ),
     (

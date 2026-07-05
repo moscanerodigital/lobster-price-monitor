@@ -22,10 +22,14 @@ _TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:firm\s*shell|firm)\b", "hard_shell"),
     (r"\b(?:select|selects)\b", "select"),
     (r"(?:2\s*lb\s*(?:and|or|&)\s*(?:up|\+|plus)|2\s*lb\s*plus|2lb\+|2\s*pound\s*plus|\bjumbo)", "2lb_plus"),
-    (r"(?:1\s*⅛|1\.125)\s*lb", "1.125lb"),
+    (r"(?:1\s*⅛|1\.125|1\s*1/8)\s*lb", "1.125lb"),
     (r"(?:1\s*¼|1\.25|1\s*1/4)\s*lb", "1.25lb"),
     (r"(?:1\s*½|1\.5|1\s*1/2)\s*lb", "1.5lb"),
     (r"(?:1\s*¾|1\.75|1\s*3/4)\s*lb", "1.75lb"),
+    (r"1\s*[-–]\s*1\s*1/8\s*lbs?", "1.125lb"),
+    (r"1\s*1/4\s*lbs?", "1.25lb"),
+    (r"1\s*1/2\s*lbs?", "1.5lb"),
+    (r"2\+\s*lbs?", "2lb_plus"),
 ]
 
 _OYSTER_TIER_KEYWORDS: list[tuple[str, str]] = [
@@ -83,14 +87,18 @@ _SPECIAL_KEYWORDS = [
     "halibut", "scallops", "clams", "shrimp",
     "haddock", "salmon", "cod", "pollock", "tuna", "swordfish",
     "chowder", "bisque", "roll", "mac", "bake", "ravioli",
-    "scallop", "clam", "crab",
+    "scallop", "clam", "crab", "mussels", "monkfish",
+    "sole", "flounder", "char", "bluefish", "hake",
     "smoked", "stew",
 ]
 
 # AC4b specials post detection keywords
 SPECIALS_POST_KEYWORDS = [
     "halibut", "scallops", "clams", "shrimp",
-    "haddock", "salmon", "chowder", "roll",
+    "haddock", "salmon", "cod", "tuna", "swordfish",
+    "chowder", "roll", "mussels", "monkfish",
+    "sole", "flounder", "bluefish", "arctic char",
+    "today's catch", "catch of the day", "special", "fish fry",
 ]
 
 _CANONICAL_SPECIAL_MAP: list[tuple[str, str]] = [
@@ -107,10 +115,24 @@ _CANONICAL_SPECIAL_MAP: list[tuple[str, str]] = [
     (r"\bpollock\b", "pollock"),
     (r"\btuna\b", "tuna"),
     (r"\bswordfish\b", "swordfish"),
+    (r"\b(?:grey\s*)?sole\b", "sole"),
+    (r"\bflounder\b", "flounder"),
+    (r"\bhake\b", "hake"),
+    (r"\bbluefish\b", "bluefish"),
+    (r"\barctic\s*char\b", "arctic_char"),
+    (r"\bmonkfish\b", "monkfish"),
+    (r"\bmackerel\b", "mackerel"),
     (r"\bchowder\b", "chowder"),
     (r"\bbisque\b", "bisque"),
     (r"\brolls?\b", "roll"),
     (r"\bcrab\b", "crab"),
+    (r"\bmussels?\b", "mussels"),
+    (r"\bmonkfish\b", "monkfish"),
+    (r"\bsole\b", "sole"),
+    (r"\bflounder\b", "flounder"),
+    (r"\bhake\b", "hake"),
+    (r"\bchar\b", "arctic_char"),
+    (r"\bbluefish\b", "bluefish"),
     (r"\bsmoked\b", "smoked"),
     (r"\bstew\b", "stew"),
     (r"\bmac\b", "mac"),
@@ -140,7 +162,7 @@ def _canonical_special_key(clause: str, kw: str | None) -> str:
 
 
 def _clause_of(text: str, pos: int) -> str:
-    """Return the clause containing pos, delimited by comma, semicolon, '. ', or ' and '."""
+    """Return the clause containing pos, delimited by comma, semicolon, '. ', ' and ', or double newlines."""
     and_start = -1
     search_from = 0
     while True:
@@ -152,12 +174,75 @@ def _clause_of(text: str, pos: int) -> str:
     comma = text.rfind(",", 0, pos)
     semi = text.rfind(";", 0, pos)
     dot = text.rfind(". ", 0, pos)
-    start = max(comma, semi, dot, and_start)
+    
+    double_nl_start = -1
+    for m in re.finditer(r"\n[\s\u2063]*\n", text[:pos]):
+        double_nl_start = m.end()
+        
+    start = max(comma, semi, dot, double_nl_start, and_start)
     if start >= 0:
-        if start == and_start:
+        if start == and_start or start == double_nl_start:
             return text[start:pos]
         return text[start + 1:pos]
     return text[max(0, pos - 60):pos]
+
+
+def _shell_context_at(text: str, price_pos: int) -> str | None:
+    """Shell hint from the price clause first — avoids bleed from distant headers."""
+    clause = _clause_of(text, price_pos).lower()
+    soft_idx = max(clause.rfind("softshell"), clause.rfind("soft shell"))
+    hard_idx = max(clause.rfind("hardshell"), clause.rfind("hard shell"))
+    if soft_idx > hard_idx >= 0 or (soft_idx >= 0 and hard_idx < 0):
+        return "soft"
+    if hard_idx > soft_idx >= 0 or (hard_idx >= 0 and soft_idx < 0):
+        return "hard"
+    # Short look-back for section headers immediately before the clause.
+    header = text[max(0, price_pos - 120):price_pos].lower()
+    soft_idx = max(header.rfind("softshell"), header.rfind("soft shell"))
+    hard_idx = max(header.rfind("hardshell"), header.rfind("hard shell"))
+    if soft_idx > hard_idx >= 0 or (soft_idx >= 0 and hard_idx < 0):
+        return "soft"
+    if hard_idx > soft_idx >= 0 or (hard_idx >= 0 and soft_idx < 0):
+        return "hard"
+    return None
+
+
+def _qualify_tier_with_shell(tier: str, shell: str | None) -> str:
+    size_tiers = {"1.125lb", "1.25lb", "1.5lb", "1.75lb", "2lb_plus", "1lb", "chicks"}
+    if not shell:
+        return tier
+    suffix = f"_{shell}_shell"
+    if tier.endswith("_soft_shell") or tier.endswith("_hard_shell"):
+        return tier
+    if tier in size_tiers or tier == "chicks":
+        return f"{tier}{suffix}"
+    if tier == "soft_shell" and shell == "soft":
+        return tier
+    if tier == "hard_shell" and shell == "hard":
+        return tier
+    if shell == "soft":
+        return "soft_shell"
+    return tier
+
+
+def _infer_lobster_tier(text: str, price_pos: int) -> str | None:
+    """Tier keyword left of price, else lobster-context fallback."""
+    tier = _find_tier_left_of(text, price_pos)
+    shell = _shell_context_at(text, price_pos)
+    if tier:
+        return _qualify_tier_with_shell(tier, shell)
+    window = text[max(0, price_pos - 120): min(len(text), price_pos + 40)].lower()
+    if "lobster" not in window and "lobstah" not in window:
+        return None
+    if any(x in window for x in ("lobster meat", "picked meat", "bisque", "ravioli", "lobster roll")):
+        return None
+    if shell == "soft" or "soft shell" in window or "softshell" in window:
+        return "soft_shell"
+    if shell == "hard" or "hard shell" in window or "hardshell" in window:
+        return "hard_shell"
+    if any(x in window for x in ("starting at", "live lobster", "live lobsters", "live maine")):
+        return "hard_shell"
+    return "hard_shell"
 
 
 def _find_tier_left_of(text: str, price_pos: int) -> str | None:
@@ -322,6 +407,8 @@ def parse_post(text: str) -> list[ParsedRow]:
     """Extract lobster tiers + oyster tiers + specials from FB post text."""
     if not text:
         return []
+    import unicodedata
+    text = unicodedata.normalize("NFKD", text).replace("\u2044", "/")
     rows: list[ParsedRow] = []
 
     for m in _PRICE_LB_RE.finditer(text):
@@ -329,10 +416,19 @@ def parse_post(text: str) -> list[ParsedRow]:
         # Special keywords in clause take precedence over distant tier keywords
         if _clause_has_special_only(text, m.start()):
             continue
-        tier = _find_tier_left_of(text, m.start())
+        tier = _infer_lobster_tier(text, m.start())
         if tier:
             clause = _clause_of(text, m.start())
             clause_l = clause.lower()
+            if any(kw in clause_l for kw in ("cull", "culls", "one claw", "no claw")):
+                continue
+            if any(kw in clause_l for kw in (
+                "scallop", "mussel", "shrimp", "clam", "haddock", "salmon",
+                "crab", "oyster", "halibut", "cod", "tuna", "swordfish",
+            )):
+                continue
+            if any(kw in clause_l for kw in ("swordfish", "halibut", "tuna", "haddock", "cod")) and "lobster" not in clause_l:
+                continue
             if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
                 continue
             immediate = text[max(0, m.start() - 30):m.start()].lower()
@@ -398,9 +494,9 @@ def parse_post(text: str) -> list[ParsedRow]:
         price = float(m.group(1))
         clause = _clause_of(text, m.start())
         clause_l = clause.lower()
-        tier = _find_tier_left_of(text, m.start())
+        tier = _infer_lobster_tier(text, m.start())
         if tier and "lobster" in clause_l and not _find_special_kw_in_clause(text, m.start()):
-            if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque")):
+            if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque", "cull", "culls")):
                 continue
             immediate = text[max(0, m.start() - 30):m.start()].lower()
             if "cooked" in immediate:
@@ -443,7 +539,9 @@ def parse_post_with_meta(text: str) -> tuple[list[ParsedRow], list[ParseMeta]]:
 def _has_explicit_unit_in_snippet(snippet: str, unit: str) -> bool:
     s = snippet.lower()
     if unit == "lb":
-        return any(x in s for x in ("/lb", "per pound", " lb", "a pound"))
+        return any(x in s for x in ("/lb", "per pound", " lb", "a pound")) or bool(
+            re.search(r"\d+lb\b", s)
+        )
     if unit == "doz":
         return any(x in s for x in ("/doz", "dozen", " dz", " doz"))
     if unit == "ea":

@@ -13,7 +13,8 @@ STALE_TS = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
 
 def test_source_quality():
     assert source_quality_score("web") == 1.0
-    assert source_quality_score("facebook") == 0.9
+    assert source_quality_score("facebook") == 1.0
+    assert source_quality_score("facebook_search") == 0.9
     assert source_quality_score("google_cse") == 0.7
     assert source_quality_score("duckduckgo") == 0.5
     print("  ✓ source_quality scores")
@@ -62,6 +63,29 @@ def test_lobster_tier_passes_at_60():
     print("  ✓ lobster tier passes at threshold 60")
 
 
+def test_gate_quarantines_implausible_fb_search_lobster():
+    """FB search spam like 'Live lobsters $5/lb' must not pass without trusted source."""
+    row = ("lobster_tier", "hard_shell", 5.0, "lb", "Live lobsters $5/lb")
+    gated = score_row(
+        row,
+        source="facebook_search",
+        observed_at=FRESH_TS,
+        full_text="Newsflash!! Live lobsters $5/lb. Cooked lobsters $5.50",
+    )
+    assert not gated.gate_passed
+    assert gated.failed_gate == "C"
+    assert gated.reject_reason and "lobster_below_market_floor" in gated.reject_reason
+    print("  ✓ implausible $5/lb FB search lobster quarantined")
+
+
+def test_structured_catalog_lobster_passes_without_unit_in_title():
+    row = ("lobster_tier", "1.25lb", 15.60, "lb", "Maine Lobster 1.25lb (Hard Shell)")
+    gated = score_row(row, source="web", observed_at=FRESH_TS, structured=True)
+    assert gated.gate_passed
+    assert gated.confidence >= 60
+    print("  ✓ structured catalog lobster passes without explicit /lb")
+
+
 def test_is_specials_post():
     assert is_specials_post("halibut $18.99/lb") is True
     assert is_specials_post("chicks $8.75/lb") is False
@@ -75,6 +99,8 @@ def main() -> int:
         test_gate_quarantines_low_quality_source,
         test_gate_quarantines_out_of_band,
         test_lobster_tier_passes_at_60,
+        test_gate_quarantines_implausible_fb_search_lobster,
+        test_structured_catalog_lobster_passes_without_unit_in_title,
         test_is_specials_post,
     ]
     failures = 0

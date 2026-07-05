@@ -9,6 +9,7 @@ first failing gate recorded as reject_reason.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -23,7 +24,9 @@ from parse_prices import (
 
 SOURCE_QUALITY: dict[str, float] = {
     "web": 1.0,
-    "facebook": 0.9,
+    "facebook": 1.0,
+    "facebook_search": 0.9,
+    "reference": 0.95,
     "google_cse": 0.7,
     "duckduckgo": 0.5,
 }
@@ -35,9 +38,26 @@ MIN_SPECIALS_ALERT_CONFIDENCE = 70
 MIN_TIER_ALERT_CONFIDENCE = 60
 
 _PRICE_BANDS: dict[str, tuple[float, float]] = {
-    "lobster_tier": (4.0, 25.0),
+    "lobster_tier": (4.0, 35.0),
     "oyster_tier": (10.0, 50.0),
 }
+
+# Minimum credible $/lb for FB/search lobster tiers (2026 Maine retail).
+LOBSTER_TIER_FLOORS: dict[str, float] = {
+    "chicks": 7.50,
+    "soft_shell": 8.00,
+    "old_shell": 8.50,
+    "hard_shell": 9.50,
+    "select": 10.00,
+    "1.125lb": 7.50,
+    "1.25lb": 8.00,
+    "1.5lb": 9.00,
+    "1.75lb": 10.00,
+    "2lb_plus": 11.00,
+}
+_DEFAULT_LOBSTER_FLOOR_LB = 8.00
+# FB posts name their own $/lb — apply tier floors only to search snippets.
+_TRUSTED_LOBSTER_SOURCES = frozenset({"web", "reference", "facebook"})
 _SPECIAL_BANDS: dict[str, tuple[float, float]] = {
     "lobster_roll": (12.0, 45.0),
     "roll": (12.0, 45.0),
@@ -51,6 +71,8 @@ CANONICAL_SPECIAL_KEYS = {
     "halibut", "scallops", "clams", "shrimp", "haddock", "salmon", "cod",
     "pollock", "tuna", "swordfish", "chowder", "bisque", "lobster_roll",
     "roll", "crab", "smoked", "stew", "mac", "bake", "ravioli",
+    "arctic_char", "bluefish", "sole", "flounder", "hake", "mussels", "monkfish",
+    "fish_medley",
 }
 
 
@@ -137,7 +159,9 @@ def _gate_a_source(source: str) -> tuple[bool, float, str | None]:
 def _has_explicit_unit(snippet: str, unit: str) -> bool:
     s = snippet.lower()
     if unit == "lb":
-        return any(x in s for x in ("/lb", "per pound", "per lb", " a pound", " lb"))
+        return any(x in s for x in ("/lb", "per pound", "per lb", " a pound", " lb")) or bool(
+            re.search(r"\d+lb\b", s)
+        )
     if unit == "doz":
         return any(x in s for x in ("/doz", "per dozen", " a dozen", " dz", " doz", " dozen"))
     if unit == "ea":
@@ -170,6 +194,10 @@ def _compute_raw_confidence(
 
     if kind == "lobster_tier":
         confidence += 20
+        if source in ("facebook", "facebook_search") and _has_explicit_unit(snippet, unit):
+            confidence += 10
+        if full_text and full_text.lower().count("/lb") >= 2:
+            confidence += 10
     elif kind == "oyster_tier":
         confidence += 20
     elif kw and full_text and price_pos is not None:
@@ -179,8 +207,12 @@ def _compute_raw_confidence(
         else:
             confidence += 15
 
-    if source == "web" or structured:
+    if source in ("web", "facebook", "facebook_search") or structured:
         confidence += 10
+    if structured:
+        confidence += 15
+        if kind == "special" and key in CANONICAL_SPECIAL_KEYS:
+            confidence += 20
 
     if bare_price:
         confidence -= 30
@@ -207,9 +239,12 @@ def _gate_b_confidence(
 def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, str | None]:
     if kind == "lobster_tier":
         lo, hi = _PRICE_BANDS["lobster_tier"]
-        if unit != "lb" or not (lo <= price <= hi):
-            return False, f"gate_c:price_out_of_band:{price}"
-        return True, None
+        if unit == "lb" and lo <= price <= hi:
+            return True, None
+        # Whole-lobster catalog totals (Pine Tree): ~0.75–2.5 lb at market $/lb
+        if unit == "ea" and (lo * 0.75) <= price <= (hi * 2.5):
+            return True, None
+        return False, f"gate_c:price_out_of_band:{price}"
     if kind == "oyster_tier":
         lo, hi = _PRICE_BANDS["oyster_tier"]
         if unit == "doz" and lo <= price <= hi:
@@ -230,6 +265,44 @@ def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, 
     return True, None
 
 
+def lobster_tier_floor_lb(key: str) -> float:
+    """Return minimum credible $/lb for a lobster tier key."""
+    base = key
+    for suffix in ("_soft_shell", "_hard_shell"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    if base in LOBSTER_TIER_FLOORS:
+        return LOBSTER_TIER_FLOORS[base]
+    if key in LOBSTER_TIER_FLOORS:
+        return LOBSTER_TIER_FLOORS[key]
+    return _DEFAULT_LOBSTER_FLOOR_LB
+
+
+def _gate_c_lobster_market_floor(
+    kind: str,
+    key: str,
+    price: float,
+    unit: str,
+    source: str,
+    *,
+    structured: bool,
+) -> tuple[bool, str | None]:
+    if kind != "lobster_tier" or unit != "lb":
+        return True, None
+    if structured or source in _TRUSTED_LOBSTER_SOURCES:
+        # Absolute minimum even for direct FB posts (catches mis-parsed steamers/culls).
+        if kind == "lobster_tier" and unit == "lb" and price < 6.0:
+            return False, f"gate_c:lobster_below_market_floor:{price}<6.0"
+        return True, None
+    if price < 6.0:
+        return False, f"gate_c:lobster_below_market_floor:{price}<6.0"
+    floor = lobster_tier_floor_lb(key)
+    if price < floor:
+        return False, f"gate_c:lobster_below_market_floor:{price}<{floor}"
+    return True, None
+
+
 def _gate_c_plausibility(
     kind: str,
     key: str,
@@ -237,12 +310,20 @@ def _gate_c_plausibility(
     unit: str,
     observed_at: str,
     source: str,
+    *,
+    structured: bool = False,
 ) -> tuple[bool, str | None]:
     if source == "web":
         in_band, band_reason = _price_in_band(kind, key, price, unit)
         if not in_band:
             return False, band_reason
         return True, None
+
+    floor_ok, floor_reason = _gate_c_lobster_market_floor(
+        kind, key, price, unit, source, structured=structured,
+    )
+    if not floor_ok:
+        return False, floor_reason
 
     dt = _parse_observed_at(observed_at)
     if dt is None:
@@ -297,7 +378,7 @@ def score_row(
         )
 
     gate_c_ok, gate_c_reason = _gate_c_plausibility(
-        kind, key, price, unit, observed_at, source,
+        kind, key, price, unit, observed_at, source, structured=structured,
     )
     if not gate_c_ok:
         return GatedRow(

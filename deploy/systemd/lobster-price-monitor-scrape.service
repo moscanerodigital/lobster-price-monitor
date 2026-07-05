@@ -1,0 +1,15 @@
+[Unit]
+Description=Lobster Price Monitor scrape (no-alert dry run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=erik
+WorkingDirectory=/home/erik/lobster-price-monitor
+ExecStart=/home/erik/lobster-price-monitor/scripts/run_scrape.sh
+StandardOutput=append:/home/erik/lobster-price-monitor/logs/scrape.log
+StandardError=append:/home/erik/lobster-price-monitor/logs/scrape.err
+
+[Install]
+WantedBy=multi-user.target

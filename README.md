@@ -1,8 +1,8 @@
 # Lobster Price Monitor
 
-Tracks live lobster prices and daily-specials posts from 8 Maine coastal markets within 15 mi of Gorham, ME. Pages you on Telegram when any lobster tier or oyster grade drops below threshold.
+Tracks live lobster prices and daily-specials posts from 9 Maine coastal market sources on Erik's watchlist. Pages you on Telegram when any lobster tier or oyster grade drops below threshold.
 
-**Markets covered** (all within 15 mi of Gorham, ME):
+**Markets covered**:
 
 | Market | Location | Source |
 |---|---|---|
@@ -14,26 +14,24 @@ Tracks live lobster prices and daily-specials posts from 8 Maine coastal markets
 | Harbor Fish Market (Oysters) | Portland + Scarborough | harborfish.com (WooCommerce) |
 | Free Range Fish & Lobster | Portland | FB |
 | SoPo Seafood Market & Raw Bar | South Portland | FB |
+| Five Islands Lobster Co. | Georgetown | FB |
 
-**Note:** 5 of 8 markets post only to Facebook. Meta's anti-scrape policy blocks unauthenticated pulls on public pages. The 3 markets with structured web catalogs (Pine Tree, Harbor Fish lobster, Harbor Fish oysters) work today without authentication. To unlock the FB-only markets, export your Facebook session cookies and drop them at `~/.openclaw/secrets/facebook-cookies.json` (instructions in `RALPH.md` §Pitfalls).
+**Note:** 6 of 9 market sources post only to Facebook. Meta's anti-scrape policy blocks unauthenticated pulls on public pages. The 3 markets with structured web catalogs (Pine Tree, Harbor Fish lobster, Harbor Fish oysters) work today without authentication. To unlock the FB-only markets, export your Facebook session cookies and drop them at `~/.openclaw/secrets/facebook-cookies.json` (instructions in `RALPH.md` §Pitfalls).
 
 ## Quick start
 
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Mac mini / Chromebox install, scrape, serve, health check, and scheduling.
+
 ```bash
-# Install deps
-python3 -m pip install facebook-scraper lxml_html_clean
-
-# Run once
-python3 scripts/scrape_markets.py
-
-# Verify
-bash scripts/verify_completion.sh
-
-# Seafood board (chalkboard display)
-python3 scripts/board.py              # terminal board
-python3 scripts/board.py --html --open  # write + open data/board.html
-python3 scripts/specials.py --board     # same, via specials CLI
+bash scripts/install.sh
+bash scripts/dry_run.sh                    # scrape --no-alerts + board.html
+.venv/bin/python scripts/verify_aaa_gate.py
+.venv/bin/python scripts/health_check.py
+.venv/bin/python scripts/serve_board.py    # http://127.0.0.1:8765/board.html
+.venv/bin/python scripts/board.py --html --open
 ```
+
+**Telegram is off by default** — pass `--alerts` to `scrape_markets.py` only when approved.
 
 ## Architecture
 
@@ -45,6 +43,7 @@ scripts/
 ├── quality_gate.py      # Source quality + confidence + plausibility gates
 ├── send_alert.py        # Telegram alerts (deduped, structured specials)
 ├── specials.py          # Query CLI for gated specials
+├── markets.py           # Configured market/source roster
 ├── board.py             # Seafood chalkboard display (terminal + HTML)
 ├── board_render.py      # Board rendering engine
 ├── state.py             # JSONL read-or-bootstrap helpers
