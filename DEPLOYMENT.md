@@ -86,11 +86,11 @@ Without FB cookies, six markets remain blocked (DDG captcha-prone). The board st
 
 Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Linux or `/Users/you/lobster-price-monitor` on macOS). Canonical unit files:
 
-| Platform | Scrape | Serve |
-|----------|--------|-------|
-| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-serve.service` |
-| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` |
-| cron | `deploy/crontab.example` | run serve via systemd/launchd or `@reboot` |
+| Platform | Scrape | Scrape (ops / alerts) | Serve |
+|----------|--------|----------------------|-------|
+| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-scrape.ops.service` | `deploy/systemd/lobster-price-monitor-serve.service` |
+| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` | `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` |
+| cron | `deploy/crontab.example` | set `LOBSTER_ALERTS=1` in env | run serve via systemd/launchd or `@reboot` |
 
 Replace `LOBSTER_ROOT` placeholders in plist files before `launchctl load`. Root-level `deploy/*.service` and `deploy/*.plist` are pointers to the canonical copies above.
 
@@ -179,15 +179,23 @@ Run it from the root directory:
 .venv/bin/python scripts/manual_import.py --market "Five Islands Lobster Co." --tier "lobster_roll" --price 29.99 --unit "ea" --kind "special"
 ```
 
-## Enabling Live Telegram Alerts
+## Enabling Live Telegram Alerts (Gate D ops)
 
-To enable live Telegram alerts on schedule:
+Default scrape paths use `--no-alerts`. To promote to live ops alerts:
+
 1. Save the Telegram bot token to `~/.openclaw/secrets/telegram/herb.token`.
-2. Add the `--alerts` flag to the scrape command in your launchd plist or systemd service file:
-   ```bash
-   .venv/bin/python scripts/scrape_markets.py --alerts
-   ```
-3. Reload the launchd agent/systemd service.
+2. Enable alerts via **either**:
+   - Set `LOBSTER_ALERTS=1` (or `LOBSTER_ALERTS=true`) in the scheduler environment — `scripts/run_scrape.sh` picks this up automatically; or
+   - Use the ops unit files: `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (macOS) or `deploy/systemd/lobster-price-monitor-scrape.ops.service` (Linux); or
+   - Pass `--alerts` directly: `.venv/bin/python scripts/scrape_markets.py --alerts`
+3. Reload the launchd agent / systemd service.
+4. Verify ops readiness: `make verify-ops` (host) or `make verify-ops-ci` (CI-safe smoke).
+
+RALPH Learnings are auto-updated after each scrape (or run manually):
+
+```bash
+.venv/bin/python scripts/update_ralph_learnings.py
+```
 
 To test alert sending and layout without performing a full scrape run, execute:
 ```bash

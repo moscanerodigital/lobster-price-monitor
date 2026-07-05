@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.erik.lobster-price-monitor.scrape</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>LOBSTER_ROOT/scripts/run_scrape.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LOBSTER_ALERTS</key>
+    <string>1</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>LOBSTER_ROOT</string>
+
+  <!-- Weekday scrape: 07:00, 11:00, 15:00, 19:00 local -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key><integer>7</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>11</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>15</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>19</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>LOBSTER_ROOT/logs/scrape.log</string>
+  <key>StandardErrorPath</key>
+  <string>LOBSTER_ROOT/logs/scrape.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

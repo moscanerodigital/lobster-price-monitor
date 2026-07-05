@@ -115,7 +115,10 @@
 
 ## Learnings
 
-(empty — populated by each run)
+<!-- auto-updated from run-log -->
+
+- **Latest run** (2026-07-05T14:55:49.555711+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
+- **Five Islands Lobster Co.** (partial): Menu reference only — no live scrape
 
 ## Usage / Budget Log
 

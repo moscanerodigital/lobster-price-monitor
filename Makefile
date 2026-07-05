@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci
+.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-ops
 
 install:
 	python3 -m venv $(VENV)
@@ -38,6 +38,9 @@ verify:
 	$(PYTHON) scripts/test_specials.py
 	$(PYTHON) scripts/test_aaa_gate.py
 	$(PYTHON) scripts/test_verify_next_ci.py
+	$(PYTHON) scripts/test_verify_production_ci.py
+	$(PYTHON) scripts/test_update_ralph_learnings.py
+	$(PYTHON) scripts/test_verify_ops_ci.py
 	$(PYTHON) scripts/verify_aaa_gate.py
 
 verify-next: verify
@@ -46,9 +49,20 @@ verify-next: verify
 verify-production: verify-next
 	$(PYTHON) scripts/verify_production_gate.py
 
+verify-ops: verify-production
+	$(PYTHON) scripts/verify_ops_gate.py
+
 test: verify
 
 verify-next-ci: seed-ci-bplus-fixtures verify
 	$(PYTHON) scripts/verify_next_gate.py --min-lobster-markets 7
 
 verify-ci: seed-ci-fixtures verify
+
+verify-production-ci: seed-ci-bplus-fixtures verify
+	$(PYTHON) scripts/verify_production_gate.py --skip-scheduling
+
+verify-ops-ci: seed-ci-bplus-fixtures verify
+	$(PYTHON) scripts/update_ralph_learnings.py
+	$(PYTHON) scripts/verify_production_gate.py --skip-scheduling
+	$(PYTHON) scripts/verify_ops_gate.py --skip-alerts-check

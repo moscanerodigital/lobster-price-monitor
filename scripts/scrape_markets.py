@@ -742,6 +742,14 @@ def main(*, send_alerts: bool = False) -> int:
     except Exception as e:
         print(f"  [compact error] {type(e).__name__}: {e}", file=sys.stderr)
 
+    try:
+        from update_ralph_learnings import update_learnings
+
+        update_learnings()
+        print("  [ralph] updated Learnings section", flush=True)
+    except Exception as e:
+        print(f"  [ralph error] {type(e).__name__}: {e}", file=sys.stderr)
+
     finished = datetime.now(timezone.utc).isoformat()
     print(
         f"[{finished}] done. {run_stats['markets_succeeded']}/{run_stats['markets_attempted']} markets, "

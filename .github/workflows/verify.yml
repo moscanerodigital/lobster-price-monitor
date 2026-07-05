@@ -60,3 +60,35 @@ jobs:
 
       - name: Run Gate B+ verification
         run: make verify-next-ci
+
+  gate-production:
+    name: gate-production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run Gate C production verification
+        run: make verify-production-ci
+
+  gate-ops:
+    name: gate-ops
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run Gate D ops verification
+        run: make verify-ops-ci
