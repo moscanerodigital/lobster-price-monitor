@@ -9,5 +9,4 @@ if [[ ! -x "$PY" ]]; then
   exit 1
 fi
 "$PY" scripts/scrape_markets.py --no-alerts
-"$PY" scripts/board.py --html
 echo "Board: ${ROOT}/data/board.html"

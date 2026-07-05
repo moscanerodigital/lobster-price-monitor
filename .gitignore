@@ -12,6 +12,7 @@ venv/
 secrets/
 .env
 .env.*
+!.env.example
 *.key
 *.cx
 

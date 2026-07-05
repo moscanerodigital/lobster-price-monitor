@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-ops promote-ops
+.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-ops promote-ops regen-bplus-fixtures
 
 install:
 	python3 -m venv $(VENV)
@@ -56,6 +56,9 @@ verify-ops: verify-production
 
 promote-ops:
 	bash scripts/promote_ops.sh
+
+regen-bplus-fixtures:
+	$(PYTHON) scripts/generate_ci_bplus_fixtures.py
 
 test: verify
 

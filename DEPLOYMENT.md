@@ -1,5 +1,7 @@
 # Deployment guide — Mac mini / Chromebox serving host
 
+> **Production host agent:** See **[NEXT_AGENT.md](NEXT_AGENT.md)** for the phased install → scheduler → ops promotion runbook.
+
 ## Prerequisites
 
 - Python 3.11+ (3.14 tested locally)
@@ -25,8 +27,9 @@ Equivalent to:
 
 ```bash
 .venv/bin/python scripts/scrape_markets.py --no-alerts
-.venv/bin/python scripts/board.py --html
 ```
+
+(`scrape_markets.py` regenerates `data/board.html` at the end of each run.)
 
 **Alerts are off by default.** To enable Telegram during a scrape:
 
@@ -94,35 +97,25 @@ Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Li
 
 Replace `LOBSTER_ROOT` placeholders in plist files before `launchctl load`. Root-level `deploy/*.service` and `deploy/*.plist` are pointers to the canonical copies above.
 
-### macOS launchd (example)
+### macOS launchd
 
-Save as `~/Library/LaunchAgents/com.erik.lobster-monitor.plist`:
+Use the canonical plists in [deploy/launchd/](deploy/launchd/). Replace `LOBSTER_ROOT` placeholders, copy to `~/Library/LaunchAgents/`, then load:
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.erik.lobster-monitor</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/path/to/lobster-price-monitor/.venv/bin/python</string>
-    <string>/path/to/lobster-price-monitor/scripts/scrape_markets.py</string>
-    <string>--no-alerts</string>
-  </array>
-  <key>StartCalendarInterval</key>
-  <array>
-    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
-  </array>
-  <key>WorkingDirectory</key><string>/path/to/lobster-price-monitor</string>
-</dict>
-</plist>
+| Unit | Label | File |
+|------|-------|------|
+| Dry-run scrape | `com.erik.lobster-price-monitor.scrape` | `com.erik.lobster-price-monitor.scrape.plist` |
+| Ops scrape (alerts) | `com.erik.lobster-price-monitor.scrape.ops` | `com.erik.lobster-price-monitor.scrape.ops.plist` |
+| Board server | `com.erik.lobster-price-monitor.serve` | `com.erik.lobster-price-monitor.serve.plist` |
+
+```bash
+# Example: dry-run scrape + serve
+cp deploy/launchd/com.erik.lobster-price-monitor.scrape.plist ~/Library/LaunchAgents/
+cp deploy/launchd/com.erik.lobster-price-monitor.serve.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.erik.lobster-price-monitor.scrape.plist
+launchctl load ~/Library/LaunchAgents/com.erik.lobster-price-monitor.serve.plist
 ```
 
-Load: `launchctl load ~/Library/LaunchAgents/com.erik.lobster-monitor.plist`
+Gate verifiers expect these exact labels (see `scripts/verify_production_gate.py`).
 
 ### Linux systemd (Chromebox)
 
@@ -229,7 +222,8 @@ RALPH Learnings are auto-updated after each scrape (or run manually):
 .venv/bin/python scripts/update_ralph_learnings.py
 ```
 
-To test alert sending and layout without performing a full scrape run, execute:
+To test alert sending and layout without performing a full scrape run (sends **live** Telegram messages):
+
 ```bash
-.venv/bin/python scripts/test_alert_send.py
+.venv/bin/python scripts/send_test_alert.py
 ```

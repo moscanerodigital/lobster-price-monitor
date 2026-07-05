@@ -21,6 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from state import latest_run_log
+from update_ralph_learnings import DEFAULT_RALPH, learnings_populated
 from verify_production_gate import (
     DRY_RUN_SCRAPE_LABEL,
     DRY_RUN_SCRAPE_TIMER,
@@ -28,8 +30,6 @@ from verify_production_gate import (
     OPS_SCRAPE_TIMER,
     _launchctl_labels,
 )
-from state import latest_run_log
-from update_ralph_learnings import DEFAULT_RALPH, learnings_populated
 
 
 class GateFailure(Exception):

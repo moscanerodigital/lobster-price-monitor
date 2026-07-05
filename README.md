@@ -22,6 +22,8 @@ Tracks live lobster prices and daily-specials posts from 9 Maine coastal market 
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Mac mini / Chromebox install, scrape, serve, health check, and scheduling.
 
+**Production host deployment:** See **[NEXT_AGENT.md](NEXT_AGENT.md)** for the phased handoff runbook (install → scheduler → ops promotion).
+
 ```bash
 bash scripts/install.sh
 bash scripts/dry_run.sh                    # scrape --no-alerts + board.html

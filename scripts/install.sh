@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # One-command dependency install into project venv
+# requirements.txt mirrors pyproject.toml dependencies
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

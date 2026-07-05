@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Test Telegram alert formatting and sending. Bypasses normal dry-run suppression."""
+"""Send live Telegram test alerts — integration tool, NOT a unit test.
+
+Bypasses normal dry-run suppression and delivers real messages to the configured
+chat. Requires ~/.openclaw/secrets/telegram/herb.token. Do not run in CI.
+"""
 
 from __future__ import annotations
 
