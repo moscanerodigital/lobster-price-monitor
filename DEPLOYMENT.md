@@ -88,9 +88,9 @@ Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Li
 
 | Platform | Scrape | Scrape (ops / alerts) | Serve |
 |----------|--------|----------------------|-------|
-| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-scrape.ops.service` | `deploy/systemd/lobster-price-monitor-serve.service` |
-| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` | `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` |
-| cron | `deploy/crontab.example` | set `LOBSTER_ALERTS=1` in env | run serve via systemd/launchd or `@reboot` |
+| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-scrape.ops.service` + `.ops.timer` | `deploy/systemd/lobster-price-monitor-serve.service` |
+| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` (Label: `…scrape`) | `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (Label: `…scrape.ops`) | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` |
+| cron | `deploy/crontab.example` (`run_scrape.sh`, no alerts) | `LOBSTER_ALERTS=1` + `run_scrape.sh` (see commented ops block) | run serve via systemd/launchd or `@reboot` |
 
 Replace `LOBSTER_ROOT` placeholders in plist files before `launchctl load`. Root-level `deploy/*.service` and `deploy/*.plist` are pointers to the canonical copies above.
 
@@ -183,13 +183,22 @@ Run it from the root directory:
 
 Default scrape paths use `--no-alerts`. To promote to live ops alerts:
 
-1. Save the Telegram bot token to `~/.openclaw/secrets/telegram/herb.token`.
-2. Enable alerts via **either**:
-   - Set `LOBSTER_ALERTS=1` (or `LOBSTER_ALERTS=true`) in the scheduler environment — `scripts/run_scrape.sh` picks this up automatically; or
-   - Use the ops unit files: `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (macOS) or `deploy/systemd/lobster-price-monitor-scrape.ops.service` (Linux); or
-   - Pass `--alerts` directly: `.venv/bin/python scripts/scrape_markets.py --alerts`
-3. Reload the launchd agent / systemd service.
-4. Verify ops readiness: `make verify-ops` (host) or `make verify-ops-ci` (CI-safe smoke).
+### Promote to ops checklist
+
+1. Save the Telegram bot token to `~/.openclaw/secrets/telegram/herb.token` (and chat ID to `~/.openclaw/secrets/telegram/chat_id` or env `LOBSTER_TELEGRAM_CHAT_ID`).
+2. **Unload** the dry-run scheduler:
+   - macOS: `launchctl unload ~/Library/LaunchAgents/com.erik.lobster-price-monitor.scrape.plist`
+   - Linux: `sudo systemctl disable --now lobster-price-monitor-scrape.timer`
+3. **Load** the ops scheduler (labels/units differ from dry-run):
+   - macOS: copy `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (Label `com.erik.lobster-price-monitor.scrape.ops`), replace `LOBSTER_ROOT`, then `launchctl load …`
+   - Linux: enable `lobster-price-monitor-scrape.ops.timer` (pairs with `lobster-price-monitor-scrape.ops.service`)
+4. Run one manual scrape to confirm alerts path: `LOBSTER_ALERTS=1 scripts/run_scrape.sh`
+5. Verify ops readiness: `make verify-ops` (host) or `make verify-ops-ci` (CI-safe smoke).
+
+Alternative enable paths (without swapping units):
+
+- Set `LOBSTER_ALERTS=1` (or `LOBSTER_ALERTS=true`) in the scheduler environment — `scripts/run_scrape.sh` picks this up automatically; or
+- Pass `--alerts` directly: `.venv/bin/python scripts/scrape_markets.py --alerts`
 
 RALPH Learnings are auto-updated after each scrape (or run manually):
 

@@ -85,15 +85,15 @@
 | **AAA** | PASS | `.venv/bin/python scripts/verify_aaa_gate.py` |
 | **B+** | PASS | `.venv/bin/python scripts/verify_next_gate.py` |
 | **C (Production)** | PASS | `.venv/bin/python scripts/verify_production_gate.py` |
-| **D (Ops)** | Planned | Live alerts on scheduler, host scheduling verify, RALPH learnings auto-capture |
+| **D (Ops)** | PASS | `.venv/bin/python scripts/verify_ops_gate.py` |
 
-**CI:** `make verify-ci` (AAA) · `make verify-next-ci` (Gate B+ with full 7-market fixtures)
+**CI:** `make verify-ci` (AAA) · `make verify-next-ci` (Gate B+) · `make verify-production-ci` (Gate C) · `make verify-ops-ci` (Gate D)
 
 **Gate B+ criteria:** AAA passes · all tests pass · every market with gated lobster data on the board (≥7 when Five Islands blocked) · footer coverage matches board · scrape &lt;24h · health smoke test · mobile board HTML.
 
 **Gate C (Production) criteria:** Gate B+ passes · MALPH verify passes · local launchd/systemd scheduler registered & running · scrape duration < 300s · specials section parsed & rendered · Five Islands blocker safely isolated or manual price imported.
 
-**Gate D (Ops) criteria (planned):** Gate C passes on host · `--alerts` enabled on scheduler · `verify_production_gate.py --skip-scheduling` passes in CI · RALPH Learnings auto-populated from run-log.
+**Gate D (Ops) criteria:** Gate C passes on host · `--alerts` enabled on scheduler (or `LOBSTER_ALERTS=1`) · `verify_production_gate.py --skip-scheduling` passes in CI · RALPH Learnings auto-populated from run-log. Host promotion: `make verify-ops` (no skip flags) requires ops unit loaded + Telegram secrets.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
 
@@ -117,7 +117,7 @@
 
 <!-- auto-updated from run-log -->
 
-- **Latest run** (2026-07-05T14:55:49.555711+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
+- **Latest run** (2026-07-05T15:40:42.046078+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
 - **Five Islands Lobster Co.** (partial): Menu reference only — no live scrape
 
 ## Usage / Budget Log

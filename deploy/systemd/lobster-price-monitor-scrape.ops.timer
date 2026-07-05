@@ -1,0 +1,17 @@
+[Unit]
+Description=Lobster Price Monitor scrape timer (ops / Telegram alerts)
+Requires=lobster-price-monitor-scrape.ops.service
+
+[Timer]
+# Weekdays 07:00, 11:00, 15:00, 19:00 local
+OnCalendar=Mon..Fri 07:00
+OnCalendar=Mon..Fri 11:00
+OnCalendar=Mon..Fri 15:00
+OnCalendar=Mon..Fri 19:00
+# Weekends 09:00, 17:00 local
+OnCalendar=Sat,Sun 09:00
+OnCalendar=Sat,Sun 17:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

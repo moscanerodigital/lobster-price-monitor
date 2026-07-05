@@ -3,18 +3,23 @@
 #
 # Weekdays: 4x/day (07:00, 11:00, 15:00, 19:00 local)
 # Weekends: 2x/day (09:00, 17:00 local)
-# All scrapes use --no-alerts unless you explicitly remove that flag.
+# Default scrapes use run_scrape.sh (no Telegram alerts unless LOBSTER_ALERTS=1).
 
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 LOBSTER_ROOT=/opt/lobster-price-monitor
 LOBSTER_PY=$LOBSTER_ROOT/.venv/bin/python
 
-# Weekday scrapes (Mon–Fri)
-0 7,11,15,19 * * 1-5 cd $LOBSTER_ROOT && $LOBSTER_PY scripts/scrape_markets.py --no-alerts >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
+# Weekday scrapes (Mon–Fri) — dry-run (no alerts)
+0 7,11,15,19 * * 1-5 cd $LOBSTER_ROOT && scripts/run_scrape.sh >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
 
-# Weekend scrapes (Sat–Sun)
-0 9,17 * * 0,6 cd $LOBSTER_ROOT && $LOBSTER_PY scripts/scrape_markets.py --no-alerts >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
+# Weekend scrapes (Sat–Sun) — dry-run (no alerts)
+0 9,17 * * 0,6 cd $LOBSTER_ROOT && scripts/run_scrape.sh >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
+
+# Ops mode (live Telegram alerts) — uncomment and comment out dry-run lines above:
+# LOBSTER_ALERTS=1
+# 0 7,11,15,19 * * 1-5 cd $LOBSTER_ROOT && LOBSTER_ALERTS=1 scripts/run_scrape.sh >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
+# 0 9,17 * * 0,6 cd $LOBSTER_ROOT && LOBSTER_ALERTS=1 scripts/run_scrape.sh >> logs/scrape.stdout.log 2>> logs/scrape.stderr.log
 
 # Optional: daily health snapshot (stdout + logs/)
 15 6 * * * cd $LOBSTER_ROOT && $LOBSTER_PY scripts/health_check.py --log >> logs/health.stdout.log 2>&1

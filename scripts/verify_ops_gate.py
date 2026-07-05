@@ -157,7 +157,7 @@ def main() -> int:
     failed = False
 
     steps = [
-        ("gate_c", lambda: check_gate_c(skip_scheduling=True)),
+        ("gate_c", lambda: check_gate_c(skip_scheduling=args.skip_scheduling)),
         ("ralph_learnings", lambda: check_ralph_learnings(ralph_path=args.ralph_path)),
         (
             "alerts_enabled",

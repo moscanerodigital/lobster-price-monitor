@@ -41,6 +41,7 @@ verify:
 	$(PYTHON) scripts/test_verify_production_ci.py
 	$(PYTHON) scripts/test_update_ralph_learnings.py
 	$(PYTHON) scripts/test_verify_ops_ci.py
+	$(PYTHON) scripts/test_deploy_units.py
 	$(PYTHON) scripts/verify_aaa_gate.py
 
 verify-next: verify
@@ -64,5 +65,4 @@ verify-production-ci: seed-ci-bplus-fixtures verify
 
 verify-ops-ci: seed-ci-bplus-fixtures verify
 	$(PYTHON) scripts/update_ralph_learnings.py
-	$(PYTHON) scripts/verify_production_gate.py --skip-scheduling
-	$(PYTHON) scripts/verify_ops_gate.py --skip-alerts-check
+	$(PYTHON) scripts/verify_ops_gate.py --skip-scheduling --skip-alerts-check

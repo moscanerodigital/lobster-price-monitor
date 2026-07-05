@@ -14,7 +14,7 @@
   <key>WorkingDirectory</key>
   <string>LOBSTER_ROOT</string>
 
-  <!-- Weekday scrape: 07:00, 11:00, 15:00, 19:00 local -->
+  <!-- Weekday scrape: 07:00, 11:00, 15:00, 19:00 local; weekends: 09:00, 17:00 -->
   <key>StartCalendarInterval</key>
   <array>
     <dict>
@@ -31,6 +31,26 @@
     </dict>
     <dict>
       <key>Hour</key><integer>19</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>6</integer>
+      <key>Hour</key><integer>9</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>6</integer>
+      <key>Hour</key><integer>17</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>0</integer>
+      <key>Hour</key><integer>9</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key><integer>0</integer>
+      <key>Hour</key><integer>17</integer>
       <key>Minute</key><integer>0</integer>
     </dict>
   </array>

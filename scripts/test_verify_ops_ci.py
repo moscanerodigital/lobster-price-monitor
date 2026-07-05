@@ -34,6 +34,7 @@ def test_verify_ops_gate_passes_with_bplus_fixtures() -> None:
                 [
                     sys.executable,
                     str(ROOT / "scripts" / "verify_ops_gate.py"),
+                    "--skip-scheduling",
                     "--skip-alerts-check",
                 ],
                 cwd=str(ROOT),
