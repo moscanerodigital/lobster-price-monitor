@@ -175,17 +175,28 @@ def check_five_islands_disposition() -> None:
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Verify Gate C (production) for lobster-price-monitor")
+    parser.add_argument(
+        "--skip-scheduling",
+        action="store_true",
+        help="Skip launchd/systemd scheduling checks (for CI smoke tests)",
+    )
+    args = parser.parse_args()
+
     print("=== Gate C production verification ===")
     checks: list[tuple[str, str]] = []
 
     steps = [
         ("gate_bplus", check_gate_bplus),
         ("malph_completion", check_malph_completion),
-        ("scheduling", check_scheduling),
         ("scrape_duration", check_scrape_duration),
         ("specials_board", check_specials_board),
         ("five_islands_disposition", check_five_islands_disposition),
     ]
+    if not args.skip_scheduling:
+        steps.insert(2, ("scheduling", check_scheduling))
 
     failed = False
     for name, fn in steps:

@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify test seed-ci-fixtures verify-ci
+.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci
 
 install:
 	python3 -m venv $(VENV)
@@ -25,6 +25,11 @@ seed-ci-fixtures:
 	cp fixtures/ci_gate/* data/
 	$(PYTHON) scripts/board.py --html
 
+seed-ci-bplus-fixtures:
+	mkdir -p data
+	$(PYTHON) scripts/refresh_ci_fixture_dates.py
+	$(PYTHON) scripts/board.py --html
+
 verify:
 	@test -f data/prices.jsonl || $(MAKE) seed-ci-fixtures
 	$(PYTHON) scripts/test_parse.py
@@ -32,6 +37,7 @@ verify:
 	$(PYTHON) scripts/test_quality_gate.py
 	$(PYTHON) scripts/test_specials.py
 	$(PYTHON) scripts/test_aaa_gate.py
+	$(PYTHON) scripts/test_verify_next_ci.py
 	$(PYTHON) scripts/verify_aaa_gate.py
 
 verify-next: verify
@@ -41,5 +47,8 @@ verify-production: verify-next
 	$(PYTHON) scripts/verify_production_gate.py
 
 test: verify
+
+verify-next-ci: seed-ci-bplus-fixtures verify
+	$(PYTHON) scripts/verify_next_gate.py --min-lobster-markets 7
 
 verify-ci: seed-ci-fixtures verify

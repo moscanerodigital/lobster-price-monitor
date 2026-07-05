@@ -44,3 +44,19 @@ jobs:
         run: |
           .venv/bin/pip install ruff
           .venv/bin/ruff check scripts/
+
+  gate-bplus:
+    name: gate-bplus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run Gate B+ verification
+        run: make verify-next-ci
