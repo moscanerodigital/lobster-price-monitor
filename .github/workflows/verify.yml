@@ -2,12 +2,17 @@ name: verify
 
 on:
   push:
-    branches: [main, "cursor/**"]
+    branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
+  test:
+    name: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,8 +27,20 @@ jobs:
       - name: Run verification suite
         run: make verify-ci
 
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: make install
+
       - name: Lint with ruff
         run: |
           .venv/bin/pip install ruff
-          .venv/bin/ruff check scripts/ --fix
           .venv/bin/ruff check scripts/
