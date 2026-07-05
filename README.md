@@ -28,6 +28,11 @@ python3 scripts/scrape_markets.py
 
 # Verify
 bash scripts/verify_completion.sh
+
+# Seafood board (chalkboard display)
+python3 scripts/board.py              # terminal board
+python3 scripts/board.py --html --open  # write + open data/board.html
+python3 scripts/specials.py --board     # same, via specials CLI
 ```
 
 ## Architecture
@@ -40,6 +45,8 @@ scripts/
 ├── quality_gate.py      # Source quality + confidence + plausibility gates
 ├── send_alert.py        # Telegram alerts (deduped, structured specials)
 ├── specials.py          # Query CLI for gated specials
+├── board.py             # Seafood chalkboard display (terminal + HTML)
+├── board_render.py      # Board rendering engine
 ├── state.py             # JSONL read-or-bootstrap helpers
 ├── test_parse.py        # 25 unit tests for parse_prices
 ├── test_parse_web.py    # Web catalog parser tests

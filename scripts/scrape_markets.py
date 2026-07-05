@@ -370,6 +370,14 @@ def main() -> int:
             run_stats["confidence_sum"] / run_stats["confidence_count"], 1,
         )
     append_jsonl("run-log.jsonl", run_stats)
+
+    try:
+        from board_render import write_html_board
+        board_path = write_html_board()
+        print(f"  [board] wrote {board_path}", flush=True)
+    except Exception as e:
+        print(f"  [board error] {type(e).__name__}: {e}", file=sys.stderr)
+
     finished = datetime.now(timezone.utc).isoformat()
     print(
         f"[{finished}] done. {run_stats['markets_succeeded']}/{run_stats['markets_attempted']} markets, "

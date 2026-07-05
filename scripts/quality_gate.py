@@ -1,4 +1,12 @@
-"""AAA quality gates — source quality, parse confidence, plausibility, freshness."""
+"""AAA quality gates — explicit Gate A / B / C pipeline.
+
+Gate A (Source):      source quality score >= MIN_SOURCE_QUALITY
+Gate B (Confidence):  parse confidence >= kind threshold, adjusted by source quality
+Gate C (Plausibility): price in band + post freshness
+
+Rows must pass all three gates to surface. Failures are quarantined with the
+first failing gate recorded as reject_reason.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,8 +14,11 @@ from datetime import datetime, timedelta, timezone
 
 from parse_prices import (
     ParsedRow,
+    SPECIALS_POST_KEYWORDS,
     _clause_of,
     _find_special_kw,
+    _find_special_kw_in_clause,
+    is_specials_post,
 )
 
 SOURCE_QUALITY: dict[str, float] = {
@@ -20,8 +31,9 @@ SOURCE_QUALITY: dict[str, float] = {
 SPECIALS_CONFIDENCE_THRESHOLD = 70
 TIER_CONFIDENCE_THRESHOLD = 60
 MIN_SOURCE_QUALITY = 0.5
+MIN_SPECIALS_ALERT_CONFIDENCE = 70
+MIN_TIER_ALERT_CONFIDENCE = 60
 
-# Price bands: (min, max) per kind or (kind, key)
 _PRICE_BANDS: dict[str, tuple[float, float]] = {
     "lobster_tier": (4.0, 25.0),
     "oyster_tier": (10.0, 50.0),
@@ -50,13 +62,57 @@ class GatedRow:
     unit: str
     snippet: str
     confidence: int
+    raw_confidence: int
     source_quality: float
     gate_passed: bool
+    gate_a_passed: bool
+    gate_b_passed: bool
+    gate_c_passed: bool
     reject_reason: str | None
+    failed_gate: str | None = None
+
+
+@dataclass
+class GateStats:
+    """Aggregate gate failure counts for run-log."""
+    gate_a_failed: int = 0
+    gate_b_failed: int = 0
+    gate_c_failed: int = 0
+    passed: int = 0
+
+    def record(self, row: GatedRow) -> None:
+        if row.gate_passed:
+            self.passed += 1
+        elif row.failed_gate == "A":
+            self.gate_a_failed += 1
+        elif row.failed_gate == "B":
+            self.gate_b_failed += 1
+        elif row.failed_gate == "C":
+            self.gate_c_failed += 1
+
+    def as_dict(self) -> dict:
+        return {
+            "gate_a_failed": self.gate_a_failed,
+            "gate_b_failed": self.gate_b_failed,
+            "gate_c_failed": self.gate_c_failed,
+            "gate_passed": self.passed,
+        }
 
 
 def source_quality_score(source: str) -> float:
     return SOURCE_QUALITY.get(source, 0.3)
+
+
+def min_confidence_for_kind(kind: str) -> int:
+    return SPECIALS_CONFIDENCE_THRESHOLD if kind == "special" else TIER_CONFIDENCE_THRESHOLD
+
+
+def min_confidence_for_alert(kind: str) -> int:
+    return MIN_SPECIALS_ALERT_CONFIDENCE if kind == "special" else MIN_TIER_ALERT_CONFIDENCE
+
+
+def confidence_meets_alert_threshold(kind: str, confidence: int) -> bool:
+    return confidence >= min_confidence_for_alert(kind)
 
 
 def _parse_observed_at(observed_at: str) -> datetime | None:
@@ -71,46 +127,11 @@ def _parse_observed_at(observed_at: str) -> datetime | None:
         return None
 
 
-def _is_fresh(observed_at: str, source: str) -> tuple[bool, str | None]:
-    if source == "web":
-        return True, None
-    dt = _parse_observed_at(observed_at)
-    if dt is None:
-        if source in ("google_cse", "duckduckgo"):
-            return False, "missing_timestamp"
-        return True, None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
-    if age > timedelta(days=7):
-        return False, "stale_post"
-    return True, None
-
-
-def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, str | None]:
-    if kind == "lobster_tier":
-        lo, hi = _PRICE_BANDS["lobster_tier"]
-        if unit != "lb" or not (lo <= price <= hi):
-            return False, f"price_out_of_band:{price}"
-        return True, None
-    if kind == "oyster_tier":
-        lo, hi = _PRICE_BANDS["oyster_tier"]
-        if unit == "doz" and lo <= price <= hi:
-            return True, None
-        if unit == "lb" and lo / 12 <= price <= hi / 12:
-            return True, None
-        return False, f"price_out_of_band:{price}"
-    if kind == "special":
-        if unit == "ea":
-            lo, hi = _DEFAULT_EA_BAND
-        elif key in _SPECIAL_BANDS:
-            lo, hi = _SPECIAL_BANDS[key]
-        else:
-            lo, hi = _DEFAULT_SPECIAL_BAND
-        if not (lo <= price <= hi):
-            return False, f"price_out_of_band:{price}"
-        return True, None
-    return True, None
+def _gate_a_source(source: str) -> tuple[bool, float, str | None]:
+    sq = source_quality_score(source)
+    if sq < MIN_SOURCE_QUALITY:
+        return False, sq, "gate_a:low_source_quality"
+    return True, sq, None
 
 
 def _has_explicit_unit(snippet: str, unit: str) -> bool:
@@ -124,9 +145,120 @@ def _has_explicit_unit(snippet: str, unit: str) -> bool:
     return False
 
 
-def _keyword_in_clause(text: str, price_pos: int, kw: str) -> bool:
-    clause = _clause_of(text, price_pos)
-    return kw.lower() in clause.lower()
+def _compute_raw_confidence(
+    row: ParsedRow,
+    *,
+    source: str,
+    full_text: str,
+    price_pos: int | None,
+    bare_price: bool,
+    structured: bool,
+) -> int:
+    kind, key, _price, unit, snippet = row
+    confidence = 0
+
+    if _has_explicit_unit(snippet, unit):
+        confidence += 40
+    elif bare_price:
+        confidence += 10
+    else:
+        confidence += 25
+
+    kw = None
+    if full_text and price_pos is not None:
+        kw = _find_special_kw_in_clause(full_text, price_pos) or _find_special_kw(full_text, price_pos)
+
+    if kind == "lobster_tier":
+        confidence += 20
+    elif kind == "oyster_tier":
+        confidence += 20
+    elif kw and full_text and price_pos is not None:
+        clause = _clause_of(full_text, price_pos)
+        if kw.lower() in clause.lower():
+            confidence += 30
+        else:
+            confidence += 15
+
+    if source == "web" or structured:
+        confidence += 10
+
+    if bare_price:
+        confidence -= 30
+
+    if kind == "special" and key not in CANONICAL_SPECIAL_KEYS and len(key) > 30:
+        confidence -= 20
+
+    return max(0, min(100, confidence))
+
+
+def _gate_b_confidence(
+    kind: str,
+    raw_confidence: int,
+    source_quality: float,
+) -> tuple[bool, int, str | None]:
+    # Source quality scales effective confidence (Gate A multiplier applied here)
+    effective = int(round(raw_confidence * source_quality))
+    threshold = min_confidence_for_kind(kind)
+    if effective < threshold:
+        return False, effective, f"gate_b:low_confidence:{effective}"
+    return True, effective, None
+
+
+def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, str | None]:
+    if kind == "lobster_tier":
+        lo, hi = _PRICE_BANDS["lobster_tier"]
+        if unit != "lb" or not (lo <= price <= hi):
+            return False, f"gate_c:price_out_of_band:{price}"
+        return True, None
+    if kind == "oyster_tier":
+        lo, hi = _PRICE_BANDS["oyster_tier"]
+        if unit == "doz" and lo <= price <= hi:
+            return True, None
+        if unit == "lb" and lo / 12 <= price <= hi / 12:
+            return True, None
+        return False, f"gate_c:price_out_of_band:{price}"
+    if kind == "special":
+        if unit == "ea":
+            lo, hi = _DEFAULT_EA_BAND
+        elif key in _SPECIAL_BANDS:
+            lo, hi = _SPECIAL_BANDS[key]
+        else:
+            lo, hi = _DEFAULT_SPECIAL_BAND
+        if not (lo <= price <= hi):
+            return False, f"gate_c:price_out_of_band:{price}"
+        return True, None
+    return True, None
+
+
+def _gate_c_plausibility(
+    kind: str,
+    key: str,
+    price: float,
+    unit: str,
+    observed_at: str,
+    source: str,
+) -> tuple[bool, str | None]:
+    if source == "web":
+        in_band, band_reason = _price_in_band(kind, key, price, unit)
+        if not in_band:
+            return False, band_reason
+        return True, None
+
+    dt = _parse_observed_at(observed_at)
+    if dt is None:
+        if source in ("google_cse", "duckduckgo"):
+            return False, "gate_c:missing_timestamp"
+    else:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
+        if age > timedelta(days=7):
+            return False, "gate_c:stale_post"
+
+    in_band, band_reason = _price_in_band(kind, key, price, unit)
+    if not in_band:
+        return False, band_reason
+    return True, None
 
 
 def score_row(
@@ -137,74 +269,49 @@ def score_row(
     full_text: str = "",
     price_pos: int | None = None,
     bare_price: bool = False,
+    structured: bool = False,
 ) -> GatedRow:
+    """Run row through Gate A → B → C. Stop at first failure."""
     kind, key, price, unit, snippet = row
-    sq = source_quality_score(source)
-    confidence = 0
 
-    if sq < MIN_SOURCE_QUALITY:
+    gate_a_ok, sq, gate_a_reason = _gate_a_source(source)
+    if not gate_a_ok:
         return GatedRow(
             kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=0, source_quality=sq, gate_passed=False,
-            reject_reason="low_source_quality",
+            confidence=0, raw_confidence=0, source_quality=sq,
+            gate_passed=False, gate_a_passed=False, gate_b_passed=False,
+            gate_c_passed=False, reject_reason=gate_a_reason, failed_gate="A",
         )
 
-    if _has_explicit_unit(snippet, unit):
-        confidence += 40
-    elif bare_price:
-        confidence += 10
-    else:
-        confidence += 25
-
-    kw = _find_special_kw(full_text, price_pos or 0) if full_text else None
-    if kind == "lobster_tier":
-        confidence += 20
-    elif kind == "oyster_tier":
-        confidence += 20
-    elif kw and full_text and price_pos is not None and _keyword_in_clause(full_text, price_pos, kw):
-        confidence += 30
-    elif kw:
-        confidence += 15
-
-    if source == "web":
-        confidence += 10
-
-    if bare_price:
-        confidence -= 30
-
-    if kind == "special" and key not in CANONICAL_SPECIAL_KEYS and len(key) > 30:
-        confidence -= 20
-
-    confidence = max(0, min(100, confidence))
-
-    fresh, fresh_reason = _is_fresh(observed_at, source)
-    if not fresh:
+    raw = _compute_raw_confidence(
+        row, source=source, full_text=full_text,
+        price_pos=price_pos, bare_price=bare_price, structured=structured,
+    )
+    gate_b_ok, effective, gate_b_reason = _gate_b_confidence(kind, raw, sq)
+    if not gate_b_ok:
         return GatedRow(
             kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=confidence, source_quality=sq, gate_passed=False,
-            reject_reason=fresh_reason,
+            confidence=effective, raw_confidence=raw, source_quality=sq,
+            gate_passed=False, gate_a_passed=True, gate_b_passed=False,
+            gate_c_passed=False, reject_reason=gate_b_reason, failed_gate="B",
         )
 
-    in_band, band_reason = _price_in_band(kind, key, price, unit)
-    if not in_band:
+    gate_c_ok, gate_c_reason = _gate_c_plausibility(
+        kind, key, price, unit, observed_at, source,
+    )
+    if not gate_c_ok:
         return GatedRow(
             kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=confidence, source_quality=sq, gate_passed=False,
-            reject_reason=band_reason,
-        )
-
-    threshold = SPECIALS_CONFIDENCE_THRESHOLD if kind == "special" else TIER_CONFIDENCE_THRESHOLD
-    if confidence < threshold:
-        return GatedRow(
-            kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=confidence, source_quality=sq, gate_passed=False,
-            reject_reason=f"low_confidence:{confidence}",
+            confidence=effective, raw_confidence=raw, source_quality=sq,
+            gate_passed=False, gate_a_passed=True, gate_b_passed=True,
+            gate_c_passed=False, reject_reason=gate_c_reason, failed_gate="C",
         )
 
     return GatedRow(
         kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-        confidence=confidence, source_quality=sq, gate_passed=True,
-        reject_reason=None,
+        confidence=effective, raw_confidence=raw, source_quality=sq,
+        gate_passed=True, gate_a_passed=True, gate_b_passed=True,
+        gate_c_passed=True, reject_reason=None, failed_gate=None,
     )
 
 
@@ -215,6 +322,7 @@ def gate_rows(
     observed_at: str,
     full_text: str = "",
     parse_meta: list[dict] | None = None,
+    stats: GateStats | None = None,
 ) -> tuple[list[GatedRow], list[GatedRow]]:
     """Return (passed, quarantined) gated rows."""
     passed: list[GatedRow] = []
@@ -228,9 +336,43 @@ def gate_rows(
             full_text=full_text,
             price_pos=m.get("price_pos"),
             bare_price=m.get("bare_price", False),
+            structured=m.get("structured", False),
         )
+        if stats is not None:
+            stats.record(gated)
         if gated.gate_passed:
             passed.append(gated)
         else:
             quarantined.append(gated)
     return passed, quarantined
+
+
+def passes_specials_alert_gate(
+    text: str,
+    special_items: list[dict],
+    source: str,
+) -> tuple[bool, str | None]:
+    """Post-level AAA gate for specials Telegram alerts.
+
+    Requirements (all must hold):
+    1. Gate A: source quality >= MIN_SOURCE_QUALITY
+    2. AC4b: is_specials_post(text) OR source is web (structured catalog)
+    3. At least one special item with confidence >= MIN_SPECIALS_ALERT_CONFIDENCE
+    4. Every item in special_items meets MIN_SPECIALS_ALERT_CONFIDENCE
+    """
+    sq = source_quality_score(source)
+    if sq < MIN_SOURCE_QUALITY:
+        return False, "gate_a:low_source_quality"
+
+    if source != "web" and not is_specials_post(text):
+        return False, "gate_b:not_specials_post"
+
+    if not special_items:
+        return False, "gate_b:no_special_items"
+
+    for item in special_items:
+        conf = int(item.get("confidence", 0))
+        if conf < MIN_SPECIALS_ALERT_CONFIDENCE:
+            return False, f"gate_b:item_below_threshold:{item.get('key')}:{conf}"
+
+    return True, None

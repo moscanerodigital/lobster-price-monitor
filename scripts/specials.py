@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from board_render import get_board, render_terminal, write_html_board
 from state import read_jsonl, DATA_DIR
 
 
@@ -69,7 +70,25 @@ def main() -> int:
     parser.add_argument("--min-confidence", type=int, default=70, help="Min confidence (default 70)")
     parser.add_argument("--limit", type=int, default=50, help="Max rows to show")
     parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--board", action="store_true", help="Chalkboard terminal display (all sections)")
+    parser.add_argument("--html", action="store_true", help="Write data/board.html")
     args = parser.parse_args()
+
+    if args.board:
+        board = get_board(
+            today_only=args.today, market=args.market,
+            min_confidence=args.min_confidence,
+        )
+        print(render_terminal(board))
+        return 0
+
+    if args.html:
+        out = write_html_board(
+            today_only=args.today, market=args.market,
+            min_confidence=args.min_confidence,
+        )
+        print(f"Board written to {out}")
+        return 0
 
     if not (DATA_DIR / "prices.jsonl").exists():
         print("No prices.jsonl found. Run scrape_markets.py first.", file=sys.stderr)

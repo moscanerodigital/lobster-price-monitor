@@ -8,8 +8,10 @@ from pathlib import Path
 
 try:
     from . import state
+    from .board_render import format_price, label_for, render_telegram_board
 except ImportError:
     import state
+    from board_render import format_price, label_for, render_telegram_board
 
 SECRETS = Path(os.path.expanduser("~/.openclaw/secrets/telegram/herb.token"))
 ERIK_CHAT_ID = "6700324874"
@@ -48,10 +50,13 @@ def alert_lobster_drop(
     if key in seen:
         return False
     text = (
-        f"🦞 *Lobster price drop* — {market}\n"
-        f"   {tier}: ${price:.2f}/lb (threshold ${threshold:.2f}, conf {confidence})\n"
-        f"   seen: {observed_at}\n"
-        f"   {post_url}"
+        f"🦞 *LOBSTER DROP* — {market}\n"
+        f"```\n"
+        f"  {label_for(tier):<16} ${price:.2f}/lb\n"
+        f"  threshold ${threshold:.2f}  ·  conf {confidence}\n"
+        f"```\n"
+        f"seen: {observed_at}\n"
+        f"{post_url}"
     )
     if send_telegram(text):
         state.append_jsonl("alerts_sent.jsonl", {
@@ -72,10 +77,13 @@ def alert_oyster_drop(
     if key in seen:
         return False
     text = (
-        f"🦪 *Oyster price drop* — {market}\n"
-        f"   {grade}: ${price:.2f}/{unit} (threshold ${threshold:.2f}/{unit}, conf {confidence})\n"
-        f"   seen: {observed_at}\n"
-        f"   {post_url}"
+        f"🦪 *OYSTER DROP* — {market}\n"
+        f"```\n"
+        f"  {label_for(grade):<16} ${price:.2f}/{unit}\n"
+        f"  threshold ${threshold:.2f}/{unit}  ·  conf {confidence}\n"
+        f"```\n"
+        f"seen: {observed_at}\n"
+        f"{post_url}"
     )
     if send_telegram(text):
         state.append_jsonl("alerts_sent.jsonl", {
@@ -113,17 +121,21 @@ def alert_specials_post(
     if key in seen:
         return False
 
-    lines = [f"📣 *New specials* — {market}"]
-    for item in special_items[:8]:
-        conf = item.get("confidence", "?")
-        lines.append(
-            f"   • {item['key']}: ${item['price']:.2f}/{item['unit']} (conf {conf})"
-        )
-    if not special_items:
-        lines.append(f"   {(snippet or '')[:200]}")
-    lines.append(f"   seen: {observed_at}")
-    lines.append(f"   {post_url}")
-    text = "\n".join(lines)
+    board_block = render_telegram_board(
+        market,
+        [
+            {
+                "key": item["key"],
+                "price": item["price"],
+                "unit": item["unit"],
+                "price_str": format_price(item["price"], item["unit"]),
+            }
+            for item in special_items[:8]
+        ],
+        heading="TODAY'S CATCH",
+        emoji="📣",
+    )
+    text = f"{board_block}\nseen: {observed_at}\n{post_url}"
 
     if send_telegram(text):
         state.append_jsonl("alerts_sent.jsonl", {
@@ -150,15 +162,21 @@ def alert_web_specials(
     seen = state.seen_alert_keys()
     if key in seen:
         return False
-    lines = [f"📣 *Web specials update* — {market}"]
-    for item in new_items[:8]:
-        conf = item.get("confidence", "?")
-        lines.append(
-            f"   • {item['key']}: ${item['price']:.2f}/{item['unit']} (conf {conf})"
-        )
-    lines.append(f"   seen: {observed_at}")
-    lines.append(f"   {post_url}")
-    text = "\n".join(lines)
+    board_block = render_telegram_board(
+        market,
+        [
+            {
+                "key": item["key"],
+                "price": item["price"],
+                "unit": item["unit"],
+                "price_str": format_price(item["price"], item["unit"]),
+            }
+            for item in new_items[:8]
+        ],
+        heading="WEB SPECIALS",
+        emoji="📣",
+    )
+    text = f"{board_block}\nseen: {observed_at}\n{post_url}"
     if send_telegram(text):
         state.append_jsonl("alerts_sent.jsonl", {
             "key": key, "kind": "special", "market": market,

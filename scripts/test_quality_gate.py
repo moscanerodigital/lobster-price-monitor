@@ -23,24 +23,27 @@ def test_gate_passes_web_special():
     rows = [("special", "halibut", 18.99, "lb", "Fresh halibut $18.99/lb")]
     passed, quarantined = gate_rows(
         rows, source="web", observed_at=FRESH_TS,
-        full_text="Fresh halibut $18.99/lb", parse_meta=[{"price_pos": 13, "bare_price": False}],
+        full_text="Fresh halibut $18.99/lb",
+        parse_meta=[{"price_pos": 13, "bare_price": False, "structured": True}],
     )
     assert len(passed) == 1
     assert passed[0].gate_passed
     assert passed[0].confidence >= 70
-    print("  ✓ web special passes gate")
+    assert passed[0].gate_a_passed and passed[0].gate_b_passed and passed[0].gate_c_passed
+    print("  ✓ web special passes all gates")
 
 
-def test_gate_quarantines_stale_search():
+def test_gate_quarantines_low_quality_source():
+    """DDG snippets rarely pass Gate B — effective conf = raw × 0.5."""
     rows = [("special", "halibut", 18.99, "lb", "halibut $18.99/lb")]
     passed, quarantined = gate_rows(
-        rows, source="duckduckgo", observed_at=STALE_TS,
+        rows, source="duckduckgo", observed_at=FRESH_TS,
         full_text="halibut $18.99/lb", parse_meta=[{"price_pos": 8, "bare_price": False}],
     )
     assert len(passed) == 0
     assert len(quarantined) == 1
-    assert quarantined[0].reject_reason == "missing_timestamp" or quarantined[0].reject_reason == "stale_post"
-    print("  ✓ stale/missing timestamp quarantined")
+    assert quarantined[0].failed_gate == "B"
+    print("  ✓ low-quality source quarantined at gate B")
 
 
 def test_gate_quarantines_out_of_band():
@@ -53,7 +56,7 @@ def test_gate_quarantines_out_of_band():
 
 def test_lobster_tier_passes_at_60():
     row = ("lobster_tier", "hard_shell", 9.50, "lb", "hard shell $9.50/lb")
-    gated = score_row(row, source="facebook", observed_at=FRESH_TS, full_text="hard shell $9.50/lb")
+    gated = score_row(row, source="web", observed_at=FRESH_TS, full_text="hard shell $9.50/lb", structured=True)
     assert gated.gate_passed
     assert gated.confidence >= 60
     print("  ✓ lobster tier passes at threshold 60")
@@ -69,7 +72,7 @@ def main() -> int:
     tests = [
         test_source_quality,
         test_gate_passes_web_special,
-        test_gate_quarantines_stale_search,
+        test_gate_quarantines_low_quality_source,
         test_gate_quarantines_out_of_band,
         test_lobster_tier_passes_at_60,
         test_is_specials_post,
