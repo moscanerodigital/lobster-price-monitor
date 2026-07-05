@@ -50,3 +50,25 @@ def seen_alert_keys() -> set[str]:
 
 def data_path(name: str) -> Path:
     return DATA_DIR / name
+
+
+def last_web_specials(market: str) -> set[tuple[str, float, str]]:
+    """Return set of (key, price, unit) special rows from the most recent web snapshot."""
+    rows = read_jsonl("web-snapshots.jsonl")
+    market_rows = [r for r in rows if r.get("market") == market]
+    if not market_rows:
+        return set()
+    latest = market_rows[-1]
+    return {
+        (s["key"], float(s["price"]), s["unit"])
+        for s in latest.get("specials", [])
+    }
+
+
+def save_web_snapshot(market: str, specials: list[dict]) -> None:
+    """Persist current web catalog special rows for diff alerting."""
+    append_jsonl("web-snapshots.jsonl", {
+        "market": market,
+        "ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "specials": specials,
+    })

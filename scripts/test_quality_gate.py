@@ -1,0 +1,96 @@
+"""Unit tests for quality_gate module."""
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from quality_gate import gate_rows, is_specials_post, score_row, source_quality_score
+from parse_prices import is_specials_post as parse_is_specials_post
+
+FRESH_TS = datetime.now(timezone.utc).isoformat()
+STALE_TS = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+
+
+def test_source_quality():
+    assert source_quality_score("web") == 1.0
+    assert source_quality_score("facebook") == 0.9
+    assert source_quality_score("google_cse") == 0.7
+    assert source_quality_score("duckduckgo") == 0.5
+    print("  ✓ source_quality scores")
+
+
+def test_gate_passes_web_special():
+    rows = [("special", "halibut", 18.99, "lb", "Fresh halibut $18.99/lb")]
+    passed, quarantined = gate_rows(
+        rows, source="web", observed_at=FRESH_TS,
+        full_text="Fresh halibut $18.99/lb", parse_meta=[{"price_pos": 13, "bare_price": False}],
+    )
+    assert len(passed) == 1
+    assert passed[0].gate_passed
+    assert passed[0].confidence >= 70
+    print("  ✓ web special passes gate")
+
+
+def test_gate_quarantines_stale_search():
+    rows = [("special", "halibut", 18.99, "lb", "halibut $18.99/lb")]
+    passed, quarantined = gate_rows(
+        rows, source="duckduckgo", observed_at=STALE_TS,
+        full_text="halibut $18.99/lb", parse_meta=[{"price_pos": 8, "bare_price": False}],
+    )
+    assert len(passed) == 0
+    assert len(quarantined) == 1
+    assert quarantined[0].reject_reason == "missing_timestamp" or quarantined[0].reject_reason == "stale_post"
+    print("  ✓ stale/missing timestamp quarantined")
+
+
+def test_gate_quarantines_out_of_band():
+    row = ("lobster_tier", "hard_shell", 99.99, "lb", "hard shell $99.99/lb")
+    gated = score_row(row, source="web", observed_at=FRESH_TS, full_text="hard shell $99.99/lb")
+    assert not gated.gate_passed
+    assert gated.reject_reason and "price_out_of_band" in gated.reject_reason
+    print("  ✓ out-of-band price quarantined")
+
+
+def test_lobster_tier_passes_at_60():
+    row = ("lobster_tier", "hard_shell", 9.50, "lb", "hard shell $9.50/lb")
+    gated = score_row(row, source="facebook", observed_at=FRESH_TS, full_text="hard shell $9.50/lb")
+    assert gated.gate_passed
+    assert gated.confidence >= 60
+    print("  ✓ lobster tier passes at threshold 60")
+
+
+def test_is_specials_post_reexport():
+    assert parse_is_specials_post("halibut $18.99/lb") is True
+    assert parse_is_specials_post("chicks $8.75/lb") is False
+    print("  ✓ is_specials_post AC4b logic")
+
+
+def main() -> int:
+    tests = [
+        test_source_quality,
+        test_gate_passes_web_special,
+        test_gate_quarantines_stale_search,
+        test_gate_quarantines_out_of_band,
+        test_lobster_tier_passes_at_60,
+        test_is_specials_post_reexport,
+    ]
+    failures = 0
+    for t in tests:
+        try:
+            t()
+        except AssertionError as e:
+            print(f"  ✗ {t.__name__}: {e}")
+            failures += 1
+        except Exception as e:
+            print(f"  ✗ {t.__name__}: {type(e).__name__}: {e}")
+            failures += 1
+    print()
+    if failures == 0:
+        print(f"All {len(tests)} quality gate tests passed.")
+        return 0
+    print(f"{failures} test(s) failed.")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

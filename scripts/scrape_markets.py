@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-"""Main entrypoint: scrape 5 FB markets, parse prices, send alerts.
+"""Main entrypoint: scrape markets, parse prices, gate, alert.
 
-Run: /Users/openclaw/.hermes/hermes-agent/venv/bin/python3 scripts/scrape_markets.py
+Run: python3 scripts/scrape_markets.py
 """
 from __future__ import annotations
+import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Make sibling imports work
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from state import append_jsonl, read_jsonl, seen_post_ids
-from parse_prices import parse_post
-from send_alert import alert_lobster_drop, alert_oyster_drop, alert_special
+from state import append_jsonl, last_web_specials, save_web_snapshot, seen_post_ids
+from parse_prices import is_specials_post, parse_post, parse_post_with_meta
+from quality_gate import gate_rows, source_quality_score
+from send_alert import alert_lobster_drop, alert_oyster_drop, alert_specials_post, alert_web_specials
 
-# Thresholds (editable per README)
+FB_COOKIES_FILE = Path(os.path.expanduser("~/.openclaw/secrets/facebook-cookies.json"))
+
 LOBSTER_TIER_THRESHOLDS = {
     "chicks": 7.50,
     "soft_shell": 8.00,
@@ -30,22 +33,20 @@ LOBSTER_TIER_THRESHOLDS = {
     "2lb_plus": 11.00,
 }
 
-# Oyster thresholds (editable) — Erik likes oysters, so we alert on a deal
 OYSTER_TIER_THRESHOLDS = {
-    "xl": 28.00,              # $XL doz — alert if < $28/doz
+    "xl": 28.00,
     "jumbo": 26.00,
     "select": 22.00,
     "standard": 18.00,
     "single_select": 32.00,
-    "named_variety": 24.00,   # Wellfleet, Blue Point, Beausoleil, etc.
+    "named_variety": 24.00,
     "small": 18.00,
     "medium": 20.00,
     "large": 24.00,
     "pint": 30.00,
-    "oyster": 22.00,          # generic fallback
+    "oyster": 22.00,
 }
 
-# Markets to scrape
 MARKETS: list[dict] = [
     {"name": "Ancient Mariner Lobster Co.", "location": "Westbrook", "fb_handle": "amlobsterco", "web": None},
     {"name": "Two Tides Seafood", "location": "Scarborough", "fb_handle": "100054888565201", "web": None},
@@ -58,27 +59,65 @@ MARKETS: list[dict] = [
 ]
 
 
-def _scrape_market(market: dict) -> list[dict]:
-    """Pull latest posts from a single market. Returns list of normalized dicts.
-    Never raises — errors are caught and returned as [].
+def _load_fb_cookies() -> str | None:
+    """Load FB session cookies string for facebook-scraper."""
+    if not FB_COOKIES_FILE.exists():
+        return None
+    try:
+        raw = FB_COOKIES_FILE.read_text(encoding="utf-8").strip()
+        if not raw:
+            return None
+        data = json.loads(raw)
+        if isinstance(data, str):
+            return data
+        if isinstance(data, list):
+            return "; ".join(f"{c['name']}={c['value']}" for c in data if c.get("name"))
+        if isinstance(data, dict) and "cookies" in data:
+            return data["cookies"]
+        return None
+    except json.JSONDecodeError:
+        return FB_COOKIES_FILE.read_text(encoding="utf-8").strip() or None
 
-    Source priority:
-    1. Facebook public page (via facebook-scraper) — works only with cookies
-    2. DuckDuckGo HTML search fallback (site:facebook.com/<handle>) — works
-       unauthenticated, returns indexed post snippets. Rate-limited (DDG
-       captcha after rapid requests), so we add a small delay + 1 retry.
-    Either way the post text is run through the standard parse_prices pipeline."""
+
+def _search_fallback(market: dict, *, num: int = 5) -> list[dict]:
+    """Google CSE → DDG fallback chain with specials-aware queries."""
     import time as _time
-    from facebook_scraper import get_posts  # imported lazily
+    from google_cse import is_configured, search_fb_posts as cse_search
+    from ddg_search import search_fb_posts as ddg_search
+
+    results: list[dict] = []
+    if is_configured():
+        results = cse_search(market["name"], market["fb_handle"], num=num)
+        if results:
+            print(f"  [google-cse] {market['name']}: {len(results)} results", flush=True)
+    if not results:
+        results = ddg_search(market["name"], market["fb_handle"], num=num)
+        if not results:
+            print(f"  [ddg retry after 10s] {market['name']}", flush=True)
+            _time.sleep(10)
+            results = ddg_search(market["name"], market["fb_handle"], num=num)
+        if results:
+            print(f"  [duckduckgo] {market['name']}: {len(results)} results", flush=True)
+    return results
+
+
+def _scrape_market(market: dict) -> list[dict]:
+    """Pull latest posts. FB (with cookies) → CSE → DDG fallback chain."""
+    from facebook_scraper import get_posts
+
     results: list[dict] = []
     fb_error: str | None = None
+    cookies = _load_fb_cookies()
+    scrape_kwargs: dict = {
+        "pages": 3,
+        "options": {"allow_extra_requests": False},
+        "timeout": 60,
+    }
+    if cookies:
+        scrape_kwargs["cookies"] = cookies
+
     try:
-        posts_iter = get_posts(
-            market["fb_handle"],
-            pages=3,
-            options={"allow_extra_requests": False},
-            timeout=60,
-        )
+        posts_iter = get_posts(market["fb_handle"], **scrape_kwargs)
         for p in posts_iter:
             if not p:
                 continue
@@ -93,6 +132,7 @@ def _scrape_market(market: dict) -> list[dict]:
                 "text": text,
                 "url": url,
                 "source": "facebook",
+                "source_quality": source_quality_score("facebook"),
             })
             if len(results) >= 10:
                 break
@@ -100,35 +140,14 @@ def _scrape_market(market: dict) -> list[dict]:
         fb_error = f"{type(e).__name__}: {e}"
         print(f"  [fb scrape error] {market['fb_handle']}: {fb_error}", file=sys.stderr)
 
-    # If FB returned 0 results, fall back to DuckDuckGo search
     if not results:
-        from ddg_search import search_fb_posts
-        # First attempt
-        gcs = search_fb_posts(market["name"], market["fb_handle"], num=5)
-        if gcs:
-            results = gcs
-        else:
-            # Wait + 1 retry — DDG captcha clears in ~10s for legit-browser-rate requests
-            print(f"  [ddg retry after 10s] {market['name']}", flush=True)
-            _time.sleep(10)
-            gcs = search_fb_posts(market["name"], market["fb_handle"], num=5)
-            if gcs:
-                results = gcs
-            elif fb_error:
-                pass  # already printed
+        results = _search_fallback(market, num=5)
         if not results and fb_error is None:
             print(f"  [no results for {market['name']}]", flush=True)
     return results
 
 
 def _scrape_web(market: dict) -> list[dict]:
-    """If a market has a structured web catalog, scrape + parse it. Returns list of normalized dicts.
-    Per-market failures logged, never raise.
-
-    Note: the web catalog is parsed into structured rows, not raw text —
-    so we return both a 'text' (full page text) for the history AND individual
-    price rows for the prices.jsonl. The post_id is a stable day-keyed
-    synthetic ID so dedup works daily."""
     url = market.get("web")
     if not url:
         return []
@@ -142,16 +161,12 @@ def _scrape_web(market: dict) -> list[dict]:
         print(f"  [web scrape error] {market['name']}: {type(e).__name__}: {e}", file=sys.stderr)
         return []
 
-    # Parse structured products
-    from parse_web import parse_web_catalog  # type: ignore
+    from parse_web import parse_web_catalog
     structured = parse_web_catalog(html)
-    # Also keep raw text snippet
     text = _re.sub(r"<[^>]+>", " ", html)
     text = _re.sub(r"\s+", " ", text).strip()[:4000]
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     post_id = f"web-{market['fb_handle']}-{day}"
-    # Return as a single 'post' that has a structured marker — scrape_markets main
-    # loop will look for 'structured_prices' field to add prices directly.
     return [{
         "market": market["name"],
         "post_id": post_id,
@@ -159,15 +174,96 @@ def _scrape_web(market: dict) -> list[dict]:
         "text": text,
         "url": url,
         "source": "web",
-        "structured_prices": structured,  # list of (kind, key, price, unit, snippet)
+        "source_quality": source_quality_score("web"),
+        "structured_prices": structured,
     }]
+
+
+def _process_gated_rows(
+    gated_passed: list,
+    quarantined: list,
+    market: dict,
+    p: dict,
+    observed_at: str,
+    run_stats: dict,
+) -> list[dict]:
+    """Persist gated rows and fire threshold alerts. Returns passed special items."""
+    special_items: list[dict] = []
+    for g in gated_passed:
+        append_jsonl("prices.jsonl", {
+            "market": market["name"],
+            "observed_at": observed_at,
+            "post_id": p["post_id"],
+            "kind": g.kind,
+            "key": g.key,
+            "price": g.price,
+            "unit": g.unit,
+            "snippet": g.snippet,
+            "confidence": g.confidence,
+            "source_quality": g.source_quality,
+            "gate_passed": True,
+            "source": p.get("source", "unknown"),
+        })
+        if g.kind == "special":
+            special_items.append({
+                "key": g.key, "price": g.price, "unit": g.unit,
+                "confidence": g.confidence,
+            })
+        if g.kind == "lobster_tier" and g.key in LOBSTER_TIER_THRESHOLDS:
+            threshold = LOBSTER_TIER_THRESHOLDS[g.key]
+            if g.price < threshold:
+                if alert_lobster_drop(
+                    market["name"], g.key, g.price, p["url"], observed_at,
+                    threshold, confidence=g.confidence,
+                ):
+                    run_stats["lobster_alerts"] += 1
+        if g.kind == "oyster_tier" and g.key in OYSTER_TIER_THRESHOLDS:
+            threshold = OYSTER_TIER_THRESHOLDS[g.key]
+            if g.unit == "doz":
+                if g.price < threshold:
+                    if alert_oyster_drop(
+                        market["name"], g.key, g.price, p["url"], observed_at,
+                        threshold, g.unit, confidence=g.confidence,
+                    ):
+                        run_stats["oyster_alerts"] += 1
+            elif g.unit == "lb":
+                lb_threshold = threshold / 12.0
+                if g.price < lb_threshold:
+                    if alert_oyster_drop(
+                        market["name"], g.key, g.price, p["url"], observed_at,
+                        lb_threshold, g.unit, confidence=g.confidence,
+                    ):
+                        run_stats["oyster_alerts"] += 1
+
+    for g in quarantined:
+        append_jsonl("quarantine.jsonl", {
+            "market": market["name"],
+            "observed_at": observed_at,
+            "post_id": p["post_id"],
+            "kind": g.kind,
+            "key": g.key,
+            "price": g.price,
+            "unit": g.unit,
+            "snippet": g.snippet,
+            "confidence": g.confidence,
+            "source_quality": g.source_quality,
+            "reject_reason": g.reject_reason,
+            "source": p.get("source", "unknown"),
+        })
+        run_stats["rows_quarantined"] += 1
+
+    run_stats["rows_gated"] += len(gated_passed) + len(quarantined)
+    if gated_passed:
+        run_stats["confidence_sum"] += sum(g.confidence for g in gated_passed)
+        run_stats["confidence_count"] += len(gated_passed)
+    return special_items
 
 
 def main() -> int:
     started = datetime.now(timezone.utc).isoformat()
     print(f"[{started}] lobster-price-monitor: starting", flush=True)
 
-    run_stats = {
+    run_stats: dict = {
         "ts": started,
         "markets_attempted": len(MARKETS),
         "markets_succeeded": 0,
@@ -177,92 +273,112 @@ def main() -> int:
         "lobster_alerts": 0,
         "oyster_alerts": 0,
         "special_alerts": 0,
+        "rows_gated": 0,
+        "rows_quarantined": 0,
+        "confidence_sum": 0,
+        "confidence_count": 0,
+        "avg_confidence": 0.0,
+        "source_breakdown": {},
         "errors": [],
     }
 
     for market in MARKETS:
         print(f"  scraping {market['name']} ({market['fb_handle']})...", flush=True)
         posts = _scrape_market(market)
-        # Also scrape web catalog if available
         web_posts = _scrape_web(market)
         if web_posts:
             posts = posts + web_posts
         if posts:
             run_stats["markets_succeeded"] += 1
         run_stats["posts_pulled"] += len(posts)
+        for p in posts:
+            src = p.get("source", "unknown")
+            run_stats["source_breakdown"][src] = run_stats["source_breakdown"].get(src, 0) + 1
         run_stats["errors"].append({
             "market": market["name"],
             "fb_handle": market["fb_handle"],
             "fetched": len(posts),
         })
 
-        # Dedup: only process posts we haven't seen for this market
         seen = seen_post_ids("history.jsonl", market["name"])
         new_posts = [p for p in posts if p["post_id"] not in seen]
         run_stats["new_posts"] += len(new_posts)
         print(f"    fetched {len(posts)} posts, {len(new_posts)} new", flush=True)
 
-        # Persist all fetched posts to history (so we have full record)
         for p in posts:
-            append_jsonl("history.jsonl", p)
+            row = dict(p)
+            if "source_quality" not in row:
+                row["source_quality"] = source_quality_score(p.get("source", "unknown"))
+            append_jsonl("history.jsonl", row)
 
-        # Parse + alert on new posts only
         for p in new_posts:
             observed_at = p["timestamp"]
-            # If this is a web-sourced post with structured_prices, use those
+            source = p.get("source", "unknown")
+            full_text = p.get("text", "")
+
             if "structured_prices" in p:
                 parsed = [tuple(sp) for sp in p["structured_prices"]]
+                meta = [{"price_pos": 0, "bare_price": False}] * len(parsed)
             else:
-                parsed = parse_post(p["text"])
-            run_stats["prices_parsed"] += len(parsed)
-            # Persist parsed prices
-            for kind, key, price, unit, snippet in parsed:
-                append_jsonl("prices.jsonl", {
-                    "market": market["name"],
-                    "observed_at": observed_at,
-                    "post_id": p["post_id"],
-                    "kind": kind,
-                    "key": key,
-                    "price": price,
-                    "unit": unit,
-                    "snippet": snippet,
-                })
-                if kind == "lobster_tier" and key in LOBSTER_TIER_THRESHOLDS:
-                    threshold = LOBSTER_TIER_THRESHOLDS[key]
-                    if price < threshold:
-                        if alert_lobster_drop(market["name"], key, price, p["url"], observed_at, threshold):
-                            run_stats["lobster_alerts"] += 1
-                if kind == "oyster_tier" and key in OYSTER_TIER_THRESHOLDS:
-                    threshold = OYSTER_TIER_THRESHOLDS[key]
-                    # Oyster thresholds are typically per-dozen. If the
-                    # actual unit is "lb" (live-in-shell by weight, common for
-                    # wholesale markets), divide the doz threshold by 12 as
-                    # a rough equivalent. Skip alerts for ambiguous cases.
-                    if unit == "doz":
-                        if price < threshold:
-                            if alert_oyster_drop(market["name"], key, price, p["url"], observed_at, threshold, unit):
-                                run_stats["oyster_alerts"] += 1
-                    elif unit == "lb":
-                        # Use 1/12 of the doz threshold as the per-lb ceiling
-                        lb_threshold = threshold / 12.0
-                        if price < lb_threshold:
-                            if alert_oyster_drop(market["name"], key, price, p["url"], observed_at, lb_threshold, unit):
-                                run_stats["oyster_alerts"] += 1
-            # Specials alert (per new post) — only for FB posts with parsed prices
-            if parsed and "structured_prices" not in p:
-                if alert_special(market["name"], p["url"], p["text"], observed_at):
-                    run_stats["special_alerts"] += 1
+                parsed, meta = parse_post_with_meta(full_text)
 
-        # Be polite to FB/DDG — 5s delay between markets (DDG captcha triggers fast)
+            run_stats["prices_parsed"] += len(parsed)
+            passed, quarantined = gate_rows(
+                parsed, source=source, observed_at=observed_at,
+                full_text=full_text, parse_meta=meta,
+            )
+            special_items = _process_gated_rows(
+                passed, quarantined, market, p, observed_at, run_stats,
+            )
+
+            # AC4b specials alert for FB/search posts
+            if "structured_prices" not in p:
+                gated_specials = [s for s in special_items if s.get("confidence", 0) >= 70]
+                if gated_specials and is_specials_post(full_text):
+                    if alert_specials_post(
+                        market["name"], p["url"], full_text, observed_at,
+                        special_items=gated_specials, source=source,
+                    ):
+                        run_stats["special_alerts"] += 1
+            else:
+                # Web catalog specials diff alerting
+                current_specials = {
+                    (g.key, g.price, g.unit) for g in passed if g.kind == "special"
+                }
+                prev_specials = last_web_specials(market["name"])
+                new_special_rows = current_specials - prev_specials
+                if new_special_rows:
+                    new_items = [
+                        {"key": k, "price": pr, "unit": u, "confidence": g.confidence}
+                        for g in passed if g.kind == "special"
+                        for k, pr, u in [(g.key, g.price, g.unit)]
+                        if (k, pr, u) in new_special_rows and g.confidence >= 70
+                    ]
+                    if new_items and alert_web_specials(
+                        market["name"], p["url"], observed_at, new_items,
+                    ):
+                        run_stats["special_alerts"] += 1
+                save_web_snapshot(market["name"], [
+                    {"key": g.key, "price": g.price, "unit": g.unit}
+                    for g in passed if g.kind == "special"
+                ])
+
         time.sleep(5)
 
+    if run_stats["confidence_count"]:
+        run_stats["avg_confidence"] = round(
+            run_stats["confidence_sum"] / run_stats["confidence_count"], 1,
+        )
     append_jsonl("run-log.jsonl", run_stats)
     finished = datetime.now(timezone.utc).isoformat()
-    print(f"[{finished}] done. {run_stats['markets_succeeded']}/{run_stats['markets_attempted']} markets, "
-          f"{run_stats['new_posts']} new posts, {run_stats['prices_parsed']} prices, "
-          f"{run_stats['lobster_alerts']} lobster alerts, {run_stats['oyster_alerts']} oyster alerts, "
-          f"{run_stats['special_alerts']} specials alerts",
-          flush=True)
+    print(
+        f"[{finished}] done. {run_stats['markets_succeeded']}/{run_stats['markets_attempted']} markets, "
+        f"{run_stats['new_posts']} new posts, {run_stats['prices_parsed']} prices, "
+        f"{run_stats['rows_quarantined']} quarantined, avg conf {run_stats['avg_confidence']}, "
+        f"{run_stats['lobster_alerts']} lobster, {run_stats['oyster_alerts']} oyster, "
+        f"{run_stats['special_alerts']} specials alerts",
+        flush=True,
+    )
     return 0
 
 

@@ -14,13 +14,12 @@ import re
 from typing import Literal
 
 # ---- Lobster tier keywords (more specific first) ----
-# Each: (regex, canonical_tier)
 _TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:chicks|chix)\b", "chicks"),
     (r"\b(?:soft\s*shell|softshell)\b", "soft_shell"),
     (r"\b(?:old\s*shell|oldshell)\b", "old_shell"),
     (r"\b(?:hard\s*shell|hardshell)\b", "hard_shell"),
-    (r"\b(?:firm\s*shell|firm)\b", "hard_shell"),  # "Firm Shell" maps to hard_shell
+    (r"\b(?:firm\s*shell|firm)\b", "hard_shell"),
     (r"\b(?:select|selects)\b", "select"),
     (r"(?:2\s*lb\s*(?:and|or|&)\s*(?:up|\+|plus)|2\s*lb\s*plus|2lb\+|2\s*pound\s*plus|\bjumbo)", "2lb_plus"),
     (r"(?:1\s*⅛|1\.125)\s*lb", "1.125lb"),
@@ -29,8 +28,6 @@ _TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"(?:1\s*¾|1\.75|1\s*3/4)\s*lb", "1.75lb"),
 ]
 
-# ---- Oyster size/grade keywords ----
-# Order matters: more specific first. "single select" before "select", etc.
 _OYSTER_TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:single\s*selects?)\b", "single_select"),
     (r"\b(?:extra\s*large|xl)\b", "xl"),
@@ -44,8 +41,6 @@ _OYSTER_TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:large)\b", "large"),
 ]
 
-# ---- Price patterns ----
-# $/lb style — handles $8.75/lb, $8.75 per pound, $8.75 a pound, $8.99lb, $8.75 lb
 _PRICE_LB_RE = re.compile(
     r"\$\s*(\d+(?:\.\d+)?)\s*"
     r"(?:"
@@ -57,7 +52,6 @@ _PRICE_LB_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-# $/dozen style — oysters: $24/doz, $24 dz, $24 a dozen, $24 dozen
 _PRICE_DOZ_RE = re.compile(
     r"\$\s*(\d+(?:\.\d+)?)\s*"
     r"(?:"
@@ -71,7 +65,6 @@ _PRICE_DOZ_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-# $/ea style — explicit units
 _PRICE_EA_RE = re.compile(
     r"\$\s*(\d+(?:\.\d+)?)\s*"
     r"(?:"
@@ -83,23 +76,50 @@ _PRICE_EA_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
+# Bare $X.XX — only when context implies a price (no unit suffix)
+_PRICE_BARE_RE = re.compile(r"\$\s*(\d+(?:\.\d+)?)(?!\s*(?:/|per|\s*(?:lb|doz|dz|ea|each|roll)\b))", re.IGNORECASE)
 
-# ---- Specials keywords (any seafood item, EXCLUDING lobster meat — that
-#      is cooked/picked product, not live lobster. Erik wants live only.) ----
 _SPECIAL_KEYWORDS = [
     "halibut", "scallops", "clams", "shrimp",
     "haddock", "salmon", "cod", "pollock", "tuna", "swordfish",
     "chowder", "bisque", "roll", "mac", "bake", "ravioli",
     "scallop", "clam", "crab",
     "smoked", "stew",
-    # "lobster" and "meat" excluded — we want LIVE lobster only.
-    # Lobster tier classification handles live lobster via the tier keywords.
-    # "lobster meat" / "picked meat" / "lobster bisque" are excluded.
-    # "oysters" is NOT in this list — oyster prices go through the dedicated
-    # oyster_tier path (kind=oyster_tier, unit=doz, threshold alerts).
+]
+
+# AC4b specials post detection keywords
+SPECIALS_POST_KEYWORDS = [
+    "halibut", "scallops", "clams", "shrimp",
+    "haddock", "salmon", "chowder", "roll",
+]
+
+_CANONICAL_SPECIAL_MAP: list[tuple[str, str]] = [
+    (r"\blobster\s*rolls?\b", "lobster_roll"),
+    (r"\bclam\s*chowder\b", "chowder"),
+    (r"\blobster\s*mac\b", "mac"),
+    (r"\bhalibut\b", "halibut"),
+    (r"\bscallops?\b", "scallops"),
+    (r"\bclams?\b", "clams"),
+    (r"\bshrimp\b", "shrimp"),
+    (r"\bhaddock\b", "haddock"),
+    (r"\bsalmon\b", "salmon"),
+    (r"\bcod\b", "cod"),
+    (r"\bpollock\b", "pollock"),
+    (r"\btuna\b", "tuna"),
+    (r"\bswordfish\b", "swordfish"),
+    (r"\bchowder\b", "chowder"),
+    (r"\bbisque\b", "bisque"),
+    (r"\brolls?\b", "roll"),
+    (r"\bcrab\b", "crab"),
+    (r"\bsmoked\b", "smoked"),
+    (r"\bstew\b", "stew"),
+    (r"\bmac\b", "mac"),
+    (r"\bbake\b", "bake"),
+    (r"\bravioli\b", "ravioli"),
 ]
 
 ParsedRow = tuple[Literal["lobster_tier", "oyster_tier", "special"], str, float, str, str]
+ParseMeta = dict
 
 
 def _slug(s: str) -> str:
@@ -107,40 +127,44 @@ def _slug(s: str) -> str:
     return s[:80]
 
 
+def _canonical_special_key(clause: str, kw: str | None) -> str:
+    clause_l = clause.lower()
+    for pattern, canonical in _CANONICAL_SPECIAL_MAP:
+        if re.search(pattern, clause_l, re.IGNORECASE):
+            return canonical
+    if kw:
+        if kw == "roll" and "lobster" in clause_l:
+            return "lobster_roll"
+        return kw
+    return _slug(clause)[:40] or "special"
+
+
 def _clause_of(text: str, pos: int) -> str:
-    """Return the clause containing pos (text back to the most recent
-    comma, semicolon, or '. '). Falls back to a 60-char window if no
-    boundary is found."""
-    start = max(
-        text.rfind(",", 0, pos),
-        text.rfind(";", 0, pos),
-        text.rfind(". ", 0, pos),
-    )
+    """Return the clause containing pos, delimited by comma, semicolon, '. ', or ' and '."""
+    and_start = -1
+    search_from = 0
+    while True:
+        idx = text.lower().find(" and ", search_from, pos)
+        if idx < 0:
+            break
+        and_start = idx + 5
+        search_from = idx + 5
+    comma = text.rfind(",", 0, pos)
+    semi = text.rfind(";", 0, pos)
+    dot = text.rfind(". ", 0, pos)
+    start = max(comma, semi, dot, and_start)
     if start >= 0:
+        if start == and_start:
+            return text[start:pos]
         return text[start + 1:pos]
     return text[max(0, pos - 60):pos]
 
 
 def _find_tier_left_of(text: str, price_pos: int) -> str | None:
-    """Look left from price_pos for the nearest lobster tier keyword.
-
-    Window strategy: a clause is delimited by `,` OR by `. ` (period+space)
-    OR by `;`. Sentence boundaries matter because "1.25 lb" contains a `.`.
-
-    Tier selection:
-    1. Same clause as price: prefer non-size tier (chicks/old/hard/soft/select)
-       over size tier when both appear — because in "Chicks 1 1/4 lbers $8.75"
-       "Chicks" is the parent tier and "1 1/4" is just a size descriptor.
-    2. If no tier in same clause: look in the IMMEDIATELY PRECEDING clause
-       for size-tier only (handles "Hard shell $11.95, 2 lb and plus $12.75").
-       Don't look further back — that risks leaking "1 1/4" from way back
-       into a different clause's price."""
     size_tiers = {"1.125lb", "1.25lb", "1.5lb", "1.75lb", "2lb_plus"}
     window_start = max(0, price_pos - 160)
     left = text[window_start:price_pos]
 
-    # Find ALL clause boundaries (positions of `,` `;` and `. ` (with space
-    # and not in a number)).
     boundaries: list[int] = []
     for i, ch in enumerate(left):
         if ch in (",", ";"):
@@ -193,13 +217,6 @@ def _find_tier_left_of(text: str, price_pos: int) -> str | None:
 
 
 def _find_oyster_grade_in_clause(clause: str) -> str | None:
-    """Return the most specific oyster grade keyword in the clause, or None.
-
-    Strategy: find all matches in the clause. If a non-named_variety grade
-    (xl, select, standard, etc.) is present, prefer it over named_variety
-    because the size/grade is the discriminating price tier. Within the
-    same class (size or variety), take the leftmost match.
-    """
     matches: list[tuple[int, str]] = []
     for pattern, canonical in _OYSTER_TIER_KEYWORDS:
         m = re.search(pattern, clause, re.IGNORECASE)
@@ -207,19 +224,15 @@ def _find_oyster_grade_in_clause(clause: str) -> str | None:
             matches.append((m.start(), canonical))
     if not matches:
         return None
-    # Prefer non-named_variety over named_variety
     grades = [c for _, c in matches if c != "named_variety"]
     if grades:
-        # Take the leftmost non-variety match
         leftmost = min((m for m in matches if m[1] != "named_variety"), key=lambda x: x[0])
         return leftmost[1]
-    # Only named_variety matches
     leftmost = min(matches, key=lambda x: x[0])
     return leftmost[1]
 
 
 def _find_special_kw(text: str, around_pos: int) -> str | None:
-    """Find any special keyword within ±80 chars of around_pos."""
     s = max(0, around_pos - 80)
     e = min(len(text), around_pos + 30)
     window = text[s:e].lower()
@@ -229,9 +242,78 @@ def _find_special_kw(text: str, around_pos: int) -> str | None:
     return None
 
 
+def _find_special_kw_in_clause(text: str, price_pos: int) -> str | None:
+    clause = _clause_of(text, price_pos).lower()
+    # Prefer longer/more specific matches first
+    for kw in sorted(_SPECIAL_KEYWORDS, key=len, reverse=True):
+        if kw in clause:
+            return kw
+    return None
+
+
+def _clause_has_lobster_tier(text: str, price_pos: int) -> bool:
+    clause = _clause_of(text, price_pos)
+    for pattern, _canonical in _TIER_KEYWORDS:
+        if re.search(pattern, clause, re.IGNORECASE):
+            return True
+    return "lobster" in clause.lower()
+
+
+def _clause_has_special_only(text: str, price_pos: int) -> bool:
+    """True when clause has a special keyword but no live-lobster tier context."""
+    clause_l = _clause_of(text, price_pos).lower()
+    has_special = any(kw in clause_l for kw in _SPECIAL_KEYWORDS)
+    if not has_special:
+        return False
+    return not _clause_has_lobster_tier(text, price_pos)
+
+
+def _infer_unit_from_clause(clause: str) -> str:
+    cl = clause.lower()
+    if any(x in cl for x in ("roll", "each", "dinner", "/ea", " per ea")):
+        return "ea"
+    if any(x in cl for x in ("/lb", "per pound", "per lb", " lb", "pound")):
+        return "lb"
+    if any(x in cl for x in ("/doz", "dozen", " dz", " doz")):
+        return "doz"
+    if "roll" in cl:
+        return "ea"
+    return "ea"
+
+
+def _bare_price_allowed(text: str, price_pos: int) -> bool:
+    clause = _clause_of(text, price_pos)
+    clause_l = clause.lower()
+    if _find_special_kw_in_clause(text, price_pos):
+        return True
+    if any(x in clause_l for x in ("roll", "each", "dinner", "special")):
+        return True
+    # Live lobster with size descriptor but no unit suffix
+    if "lobster" in clause_l and _find_tier_left_of(text, price_pos):
+        return True
+    return False
+
+
+def is_specials_post(text: str) -> bool:
+    """AC4b: post mentions seafood special keywords AND contains $ price."""
+    if not text or "$" not in text:
+        return False
+    text_l = text.lower()
+    has_special_kw = any(kw in text_l for kw in SPECIALS_POST_KEYWORDS)
+    if not has_special_kw:
+        return False
+    # Exclude lobster-only tier listing posts (no real specials content)
+    lobster_only = (
+        any(kw in text_l for kw in ("chicks", "hard shell", "soft shell", "old shell", "live lobster"))
+        and not any(kw in text_l for kw in ("halibut", "scallops", "clams", "shrimp", "haddock", "salmon", "chowder"))
+        and "roll" not in text_l
+    )
+    if lobster_only:
+        return False
+    return True
+
+
 def _clause_contains(text: str, price_pos: int, kw: str) -> bool:
-    """Check if `kw` appears in the same clause as the price (case-insensitive).
-    Falls back to a 60-char window if no clause boundary exists."""
     clause = _clause_of(text, price_pos)
     return kw.lower() in clause.lower()
 
@@ -242,67 +324,101 @@ def parse_post(text: str) -> list[ParsedRow]:
         return []
     rows: list[ParsedRow] = []
 
-    # 1. Lobster tier prices — for each $/lb price, find nearest tier LEFT of it
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
+        # Special keywords in clause take precedence over distant tier keywords
+        if _clause_has_special_only(text, m.start()):
+            continue
         tier = _find_tier_left_of(text, m.start())
         if tier:
-            # Exclude lobster meat / cooked / picked / bisque — those are not LIVE
             clause = _clause_of(text, m.start())
             clause_l = clause.lower()
             if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
                 continue
-            # "Cooked" only excludes if IMMEDIATELY before the price
             immediate = text[max(0, m.start() - 30):m.start()].lower()
             if "cooked" in immediate:
                 continue
-            # Also skip if this is actually an oyster (oyster takes precedence)
             if _clause_contains(text, m.start(), "oyster"):
                 continue
             snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
             rows.append(("lobster_tier", tier, price, "lb", snippet))
 
-    # 2. Oyster tier prices — for each $/doz price, find oyster grade in clause
     text_lower = text.lower()
     has_oyster_mention = "oyster" in text_lower or "oysters" in text_lower
     for m in _PRICE_DOZ_RE.finditer(text):
         price = float(m.group(1))
-        # Only treat as oyster if "oyster" appears ANYWHERE in the post —
-        # FB posts often mention oysters once in the intro and then list
-        # prices per variety in subsequent clauses.
         if not has_oyster_mention:
             continue
         clause = _clause_of(text, m.start())
         grade = _find_oyster_grade_in_clause(clause)
         if not grade:
-            grade = "oyster"  # generic
+            grade = "oyster"
         snippet = text[max(0, m.start() - 50):m.end() + 20].strip()[:120]
         rows.append(("oyster_tier", grade, price, "doz", snippet))
 
-    # 3. Specials as $/lb (not already a lobster tier) — but only LIVE/non-lobster
     tier_snippets = {r[4] for r in rows if r[0] == "lobster_tier"}
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
         snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
         if snippet in tier_snippets:
             continue
-        kw = _find_special_kw(text, m.start())
+        kw = _find_special_kw_in_clause(text, m.start())
+        if not kw:
+            kw = _find_special_kw(text, m.start())
         if kw:
             clause = _clause_of(text, m.start())
             clause_l = clause.lower()
             if any(kw_x in clause_l for kw_x in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
                 continue
-            rows.append(("special", _slug(snippet), price, "lb", snippet))
+            key = _canonical_special_key(clause, kw)
+            rows.append(("special", key, price, "lb", snippet))
 
-    # 4. $/ea specials (rolls, dinners) — explicit units
     for m in _PRICE_EA_RE.finditer(text):
         price = float(m.group(1))
-        kw = _find_special_kw(text, m.start())
+        kw = _find_special_kw_in_clause(text, m.start())
+        if not kw:
+            kw = _find_special_kw(text, m.start())
         if kw:
+            clause = _clause_of(text, m.start())
             snippet = text[max(0, m.start() - 40):m.end() + 30].strip()[:120]
-            rows.append(("special", _slug(snippet), price, "ea", snippet))
+            key = _canonical_special_key(clause, kw)
+            rows.append(("special", key, price, "ea", snippet))
 
-    # Dedupe by (kind, key, price, unit)
+    # Bare $ prices with contextual unit inference
+    covered_positions = set()
+    for pattern in (_PRICE_LB_RE, _PRICE_DOZ_RE, _PRICE_EA_RE):
+        for m in pattern.finditer(text):
+            covered_positions.add(m.start())
+
+    for m in _PRICE_BARE_RE.finditer(text):
+        if m.start() in covered_positions:
+            continue
+        if not _bare_price_allowed(text, m.start()):
+            continue
+        price = float(m.group(1))
+        clause = _clause_of(text, m.start())
+        clause_l = clause.lower()
+        tier = _find_tier_left_of(text, m.start())
+        if tier and "lobster" in clause_l and not _find_special_kw_in_clause(text, m.start()):
+            if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque")):
+                continue
+            immediate = text[max(0, m.start() - 30):m.start()].lower()
+            if "cooked" in immediate:
+                continue
+            snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
+            rows.append(("lobster_tier", tier, price, "lb", snippet))
+            continue
+        kw = _find_special_kw_in_clause(text, m.start())
+        if not kw:
+            kw = _find_special_kw(text, m.start())
+        if kw:
+            if any(kw_x in clause_l for kw_x in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
+                continue
+            unit = _infer_unit_from_clause(clause)
+            snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
+            key = _canonical_special_key(clause, kw)
+            rows.append(("special", key, price, unit, snippet))
+
     seen: set[tuple[str, str, float, str]] = set()
     deduped: list[ParsedRow] = []
     for r in rows:
@@ -311,3 +427,25 @@ def parse_post(text: str) -> list[ParsedRow]:
             seen.add(sig)
             deduped.append(r)
     return deduped
+
+
+def parse_post_with_meta(text: str) -> tuple[list[ParsedRow], list[ParseMeta]]:
+    """Like parse_post but returns per-row metadata for quality gating."""
+    rows = parse_post(text)
+    meta: list[ParseMeta] = []
+    for row in rows:
+        kind, key, price, unit, snippet = row
+        bare = "$" in snippet and not _has_explicit_unit_in_snippet(snippet, unit)
+        meta.append({"price_pos": text.find(snippet[:20]) if snippet else 0, "bare_price": bare})
+    return rows, meta
+
+
+def _has_explicit_unit_in_snippet(snippet: str, unit: str) -> bool:
+    s = snippet.lower()
+    if unit == "lb":
+        return any(x in s for x in ("/lb", "per pound", " lb", "a pound"))
+    if unit == "doz":
+        return any(x in s for x in ("/doz", "dozen", " dz", " doz"))
+    if unit == "ea":
+        return any(x in s for x in ("each", "/ea", "/roll", "per roll"))
+    return False

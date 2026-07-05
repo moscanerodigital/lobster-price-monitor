@@ -34,21 +34,28 @@ bash scripts/verify_completion.sh
 
 ```
 scripts/
-├── scrape_markets.py    # Main entrypoint
-├── parse_prices.py      # Price regex + tier extraction
+├── scrape_markets.py    # Main entrypoint (AAA-gated pipeline)
+├── parse_prices.py      # Price regex + tier/special extraction
 ├── parse_web.py         # WooCommerce HTML parser
-├── send_alert.py        # Telegram alerts (deduped)
+├── quality_gate.py      # Source quality + confidence + plausibility gates
+├── send_alert.py        # Telegram alerts (deduped, structured specials)
+├── specials.py          # Query CLI for gated specials
 ├── state.py             # JSONL read-or-bootstrap helpers
-├── test_parse.py        # 11 unit tests for parse_prices
-└── verify_completion.sh # 5-check AC verifier
+├── test_parse.py        # 25 unit tests for parse_prices
+├── test_parse_web.py    # Web catalog parser tests
+├── test_quality_gate.py # AAA gate tests
+└── verify_completion.sh # AC verifier (portable)
 ```
 
 Per-run pipeline:
-1. For each market, try FB public page (via `facebook-scraper`). If empty + Google CSE creds, fall back to `site:facebook.com/<handle>` search.
+1. For each market, try FB public page (with optional cookies). Fallback chain: Google CSE → DuckDuckGo (specials-aware queries).
 2. If market has a `web` URL, scrape the WooCommerce catalog and parse structured products.
 3. Run `parse_prices.parse_post` (or use pre-parsed structured rows) to extract lobster tiers, oyster grades, and specials.
-4. For each parsed row, check against `LOBSTER_TIER_THRESHOLDS` / `OYSTER_TIER_THRESHOLDS`. Send Telegram if under threshold AND not deduped.
-5. Persist everything to JSONL. Write a run-stats row.
+4. Pass all rows through `quality_gate.gate_rows()` — quarantine low-confidence/stale/out-of-band rows.
+5. For gated rows, check against thresholds. Send Telegram if under threshold AND not deduped.
+6. Specials alerts (AC4b): only posts with seafood keywords + `$`, with structured item list and confidence ≥70.
+7. Web catalog specials: diff against last snapshot, alert on new items.
+8. Persist everything to JSONL. Write run-stats row.
 
 ## Thresholds (editable in `scripts/scrape_markets.py`)
 
