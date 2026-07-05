@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """AAA gate verifier — fails if production board/serving prerequisites are not met."""
+
 from __future__ import annotations
 
 import argparse
@@ -62,6 +63,7 @@ def check_demo_explicit_only() -> None:
 
 def check_row_provenance() -> None:
     from state import read_jsonl as _read
+
     rows = [r for r in _read("prices.jsonl") if r.get("gate_passed", True)]
     if not rows:
         _fail("prices.jsonl has no gated rows — run scrape with --no-alerts")
@@ -124,6 +126,7 @@ def check_parser_fixtures() -> None:
         "test_parse_web.py",
         "test_quality_gate.py",
         "test_parse.py",
+        "test_specials.py",
         "test_aaa_gate.py",
     ]
     for name in scripts:
@@ -137,10 +140,7 @@ def check_parser_fixtures() -> None:
             text=True,
         )
         if proc.returncode != 0:
-            _fail(
-                f"{name} failed (exit {proc.returncode}):\n"
-                f"{proc.stdout}\n{proc.stderr}"
-            )
+            _fail(f"{name} failed (exit {proc.returncode}):\n{proc.stdout}\n{proc.stderr}")
 
 
 def check_board_html_exists() -> None:

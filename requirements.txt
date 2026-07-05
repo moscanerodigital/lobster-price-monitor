@@ -1,5 +1,4 @@
-facebook-scraper
-lxml_html_clean
-curl_cffi
-browser-cookie3
-pytest>=8.0
+facebook-scraper==0.2.59
+lxml_html_clean==0.4.5
+curl_cffi==0.15.0
+browser-cookie3==0.20.1

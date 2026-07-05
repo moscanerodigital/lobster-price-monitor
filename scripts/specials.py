@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Query CLI for gated seafood specials from prices.jsonl."""
+
 from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -10,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from board_render import get_board, render_terminal, write_html_board
-from state import read_jsonl, DATA_DIR
+from state import DATA_DIR, read_jsonl
 
 
 def _parse_ts(s: str) -> datetime | None:
@@ -67,16 +69,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Browse gated seafood specials")
     parser.add_argument("--today", action="store_true", help="Only today's specials")
     parser.add_argument("--market", type=str, help="Filter by market name substring")
-    parser.add_argument("--min-confidence", type=int, default=70, help="Min confidence (default 70)")
+    parser.add_argument(
+        "--min-confidence", type=int, default=70, help="Min confidence (default 70)"
+    )
     parser.add_argument("--limit", type=int, default=50, help="Max rows to show")
     parser.add_argument("--json", action="store_true", help="Output JSON")
-    parser.add_argument("--board", action="store_true", help="Chalkboard terminal display (all sections)")
+    parser.add_argument(
+        "--board", action="store_true", help="Chalkboard terminal display (all sections)"
+    )
     parser.add_argument("--html", action="store_true", help="Write data/board.html")
     args = parser.parse_args()
 
     if args.board:
         board = get_board(
-            today_only=args.today, market=args.market,
+            today_only=args.today,
+            market=args.market,
             min_confidence=args.min_confidence,
         )
         print(render_terminal(board))
@@ -84,7 +91,8 @@ def main() -> int:
 
     if args.html:
         out = write_html_board(
-            today_only=args.today, market=args.market,
+            today_only=args.today,
+            market=args.market,
             min_confidence=args.min_confidence,
         )
         print(f"Board written to {out}")

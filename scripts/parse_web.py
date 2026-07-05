@@ -1,4 +1,5 @@
 """Web catalog parser — extracts product name + price from WooCommerce HTML."""
+
 from __future__ import annotations
 
 import html as html_module
@@ -10,10 +11,10 @@ from typing import List, Literal, Tuple
 
 _PRICE_BLOCK_RE = re.compile(
     r'<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>'
-    r'(?:\s*<bdi>)?\s*'
+    r"(?:\s*<bdi>)?\s*"
     r'<span[^>]*class="[^"]*currencySymbol[^"]*"[^>]*>(?:\$|&#0?36;)</span>\s*'
-    r'([\d.,]+)\s*'
-    r'(?:</bdi>)?\s*</span>',
+    r"([\d.,]+)\s*"
+    r"(?:</bdi>)?\s*</span>",
     re.DOTALL | re.IGNORECASE,
 )
 _TITLE_RE = re.compile(
@@ -51,6 +52,7 @@ _HARBOR_SIZE_LABELS = {
 @dataclass
 class WebCatalogRow:
     """Full parsed row with provenance for persistence and board display."""
+
     kind: str
     key: str
     price: float
@@ -263,19 +265,21 @@ def _rows_from_variations(title: str, variations: list[dict]) -> List[WebCatalog
         size_label = _HARBOR_SIZE_LABELS.get(size_slug, size_slug.replace("-", " "))
         tier_key = _variation_tier_key(tier, shell)
         snippet = f"{title} — {size_label} @ ${price_f:.2f}/lb"
-        rows.append(WebCatalogRow(
-            kind="lobster_tier",
-            key=tier_key,
-            price=price_f,
-            unit="lb",
-            snippet=snippet,
-            raw_price=price_f,
-            display_price=price_f,
-            display_unit="lb",
-            price_display_type="size_specific",
-            catalog_title=title,
-            shell_tier=shell,
-        ))
+        rows.append(
+            WebCatalogRow(
+                kind="lobster_tier",
+                key=tier_key,
+                price=price_f,
+                unit="lb",
+                snippet=snippet,
+                raw_price=price_f,
+                display_price=price_f,
+                display_unit="lb",
+                price_display_type="size_specific",
+                catalog_title=title,
+                shell_tier=shell,
+            )
+        )
     return rows
 
 
@@ -288,9 +292,7 @@ def _pine_tree_lobster_row(
 ) -> WebCatalogRow:
     """Pine Tree sells whole lobsters by weight class — normalize catalog total to $/lb."""
     normalized = round(catalog_total / weight, 2)
-    snippet = (
-        f"{title} (${catalog_total:.2f} per lobster; ~${normalized:.2f}/lb)"
-    )
+    snippet = f"{title} (${catalog_total:.2f} per lobster; ~${normalized:.2f}/lb)"
     return WebCatalogRow(
         kind="lobster_tier",
         key=lobster_tier,
@@ -318,16 +320,25 @@ def parse_web_catalog_rows(html: str) -> List[WebCatalogRow]:
         next_title_pos = html.find("<h2", tm.end())
         if next_title_pos == -1:
             next_title_pos = len(html)
-        block = html[tm.end():next_title_pos]
+        block = html[tm.end() : next_title_pos]
         candidate_prices = list(_PRICE_BLOCK_RE.finditer(block))
         price_values = _parse_price_values(candidate_prices)
 
         title_l = title.lower()
-        if any(kw in title_l for kw in (
-            "lobster meat", "picked meat", "cooked", "bisque",
-            "mac and cheese", "ravioli", "lobster mac",
-            "fish medley", "frozen fish",
-        )):
+        if any(
+            kw in title_l
+            for kw in (
+                "lobster meat",
+                "picked meat",
+                "cooked",
+                "bisque",
+                "mac and cheese",
+                "ravioli",
+                "lobster mac",
+                "fish medley",
+                "frozen fish",
+            )
+        ):
             continue
 
         variations = _parse_variations(block)
@@ -347,6 +358,7 @@ def parse_web_catalog_rows(html: str) -> List[WebCatalogRow]:
 
         if "oyster" in title_l:
             from parse_prices import _find_oyster_grade_in_clause  # type: ignore
+
             grade = _find_oyster_grade_in_clause(title)
             if "shuck" in title_l or "/lb" in title_l or "1 lb" in title_l:
                 oyster_tier = grade or "shucked"
@@ -354,23 +366,37 @@ def parse_web_catalog_rows(html: str) -> List[WebCatalogRow]:
             else:
                 oyster_tier = grade or "oyster"
             if is_range:
-                rows.append(WebCatalogRow(
-                    kind="oyster_tier", key=oyster_tier, price=low_price, unit=unit,
-                    snippet=_range_snippet(title, low_price, high_price, unit),
-                    raw_price=low_price, price_high=high_price,
-                    display_price=low_price,
-                    display_unit=unit,
-                    display_price_high=high_price,
-                    price_display_type="range", catalog_title=title,
-                ))
+                rows.append(
+                    WebCatalogRow(
+                        kind="oyster_tier",
+                        key=oyster_tier,
+                        price=low_price,
+                        unit=unit,
+                        snippet=_range_snippet(title, low_price, high_price, unit),
+                        raw_price=low_price,
+                        price_high=high_price,
+                        display_price=low_price,
+                        display_unit=unit,
+                        display_price_high=high_price,
+                        price_display_type="range",
+                        catalog_title=title,
+                    )
+                )
             else:
-                rows.append(WebCatalogRow(
-                    kind="oyster_tier", key=oyster_tier, price=low_price, unit=unit,
-                    snippet=title, raw_price=low_price,
-                    display_price=low_price,
-                    display_unit=unit,
-                    price_display_type="single", catalog_title=title,
-                ))
+                rows.append(
+                    WebCatalogRow(
+                        kind="oyster_tier",
+                        key=oyster_tier,
+                        price=low_price,
+                        unit=unit,
+                        snippet=title,
+                        raw_price=low_price,
+                        display_price=low_price,
+                        display_unit=unit,
+                        price_display_type="single",
+                        catalog_title=title,
+                    )
+                )
             continue
 
         lobster_tier = _lobster_tier_from_title(title) if "lobster" in title_l else None
@@ -380,49 +406,83 @@ def parse_web_catalog_rows(html: str) -> List[WebCatalogRow]:
             if shell and lobster_tier in {"1lb", "1.25lb", "1.5lb", "1.75lb", "2lb_plus"}:
                 lobster_tier = f"{lobster_tier}_{shell}"
             if weight and weight > 0:
-                rows.append(_pine_tree_lobster_row(
-                    title, lobster_tier, low_price, weight, shell,
-                ))
+                rows.append(
+                    _pine_tree_lobster_row(
+                        title,
+                        lobster_tier,
+                        low_price,
+                        weight,
+                        shell,
+                    )
+                )
             elif is_range:
-                rows.append(WebCatalogRow(
-                    kind="lobster_tier", key=lobster_tier, price=low_price, unit="lb",
-                    snippet=_range_snippet(title, low_price, high_price, "lb"),
-                    raw_price=low_price, price_high=high_price,
-                    display_price=low_price,
-                    display_unit="lb",
-                    display_price_high=high_price,
-                    price_display_type="range", catalog_title=title,
-                    shell_tier=shell,
-                ))
+                rows.append(
+                    WebCatalogRow(
+                        kind="lobster_tier",
+                        key=lobster_tier,
+                        price=low_price,
+                        unit="lb",
+                        snippet=_range_snippet(title, low_price, high_price, "lb"),
+                        raw_price=low_price,
+                        price_high=high_price,
+                        display_price=low_price,
+                        display_unit="lb",
+                        display_price_high=high_price,
+                        price_display_type="range",
+                        catalog_title=title,
+                        shell_tier=shell,
+                    )
+                )
             else:
-                rows.append(WebCatalogRow(
-                    kind="lobster_tier", key=lobster_tier, price=low_price, unit="lb",
-                    snippet=title, raw_price=low_price,
-                    display_price=low_price,
-                    display_unit="lb",
-                    price_display_type="single", catalog_title=title,
-                    shell_tier=shell,
-                ))
+                rows.append(
+                    WebCatalogRow(
+                        kind="lobster_tier",
+                        key=lobster_tier,
+                        price=low_price,
+                        unit="lb",
+                        snippet=title,
+                        raw_price=low_price,
+                        display_price=low_price,
+                        display_unit="lb",
+                        price_display_type="single",
+                        catalog_title=title,
+                        shell_tier=shell,
+                    )
+                )
         else:
             key = _canonical_web_special_key(title)
             if is_range:
-                rows.append(WebCatalogRow(
-                    kind="special", key=key, price=low_price, unit=unit,
-                    snippet=_range_snippet(title, low_price, high_price, unit),
-                    raw_price=low_price, price_high=high_price,
-                    display_price=low_price,
-                    display_unit=unit,
-                    display_price_high=high_price,
-                    price_display_type="range", catalog_title=title,
-                ))
+                rows.append(
+                    WebCatalogRow(
+                        kind="special",
+                        key=key,
+                        price=low_price,
+                        unit=unit,
+                        snippet=_range_snippet(title, low_price, high_price, unit),
+                        raw_price=low_price,
+                        price_high=high_price,
+                        display_price=low_price,
+                        display_unit=unit,
+                        display_price_high=high_price,
+                        price_display_type="range",
+                        catalog_title=title,
+                    )
+                )
             else:
-                rows.append(WebCatalogRow(
-                    kind="special", key=key, price=low_price, unit=unit, snippet=title,
-                    raw_price=low_price,
-                    display_price=low_price,
-                    display_unit=unit,
-                    price_display_type="single", catalog_title=title,
-                ))
+                rows.append(
+                    WebCatalogRow(
+                        kind="special",
+                        key=key,
+                        price=low_price,
+                        unit=unit,
+                        snippet=title,
+                        raw_price=low_price,
+                        display_price=low_price,
+                        display_unit=unit,
+                        price_display_type="single",
+                        catalog_title=title,
+                    )
+                )
     return rows
 
 

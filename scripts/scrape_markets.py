@@ -3,10 +3,12 @@
 
 Run: python3 scripts/scrape_markets.py
 """
+
 from __future__ import annotations
+
 import argparse
 import json
-import os
+import logging
 import sys
 import time
 from datetime import datetime, timezone
@@ -14,25 +16,34 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from secrets import load_fb_cookies
+
+from markets import MARKETS
+from parse_prices import is_specials_post, parse_post, parse_post_with_meta
+from quality_gate import gate_rows, source_quality_score
+from send_alert import (
+    alert_lobster_drop,
+    alert_oyster_drop,
+    alert_specials_post,
+    alert_web_specials,
+    begin_alert_run,
+)
 from state import (
     PARSER_VERSION,
     append_jsonl,
     append_jsonl_deduped,
+    build_history_post_index,
+    count_passed_rows_by_market,
     ensure_logs_dir,
     last_web_specials,
     persist_key,
     read_jsonl,
     recent_history_posts,
     save_web_snapshot,
-    seen_post_ids,
     write_json,
 )
-from markets import MARKETS
-from parse_prices import is_specials_post, parse_post, parse_post_with_meta
-from quality_gate import gate_rows, source_quality_score
-from send_alert import alert_lobster_drop, alert_oyster_drop, alert_specials_post, alert_web_specials
 
-FB_COOKIES_FILE = Path(os.path.expanduser("~/.openclaw/secrets/facebook-cookies.json"))
+logger = logging.getLogger(__name__)
 
 LOBSTER_TIER_THRESHOLDS = {
     "chicks": 7.50,
@@ -64,36 +75,7 @@ OYSTER_TIER_THRESHOLDS = {
 
 def _load_fb_cookies() -> dict[str, str] | str | None:
     """Load FB session cookies for facebook-scraper (dict, file path, or 'from_browser')."""
-    if FB_COOKIES_FILE.exists():
-        try:
-            raw = FB_COOKIES_FILE.read_text(encoding="utf-8").strip()
-            if raw:
-                data = json.loads(raw)
-                if isinstance(data, list):
-                    jar = {
-                        c["name"]: c["value"]
-                        for c in data
-                        if isinstance(c, dict) and c.get("name") and "value" in c
-                    }
-                    if jar:
-                        return jar
-                if isinstance(data, dict):
-                    if "cookies" in data and isinstance(data["cookies"], dict):
-                        return data["cookies"]
-                    if any(k in data for k in ("c_user", "xs")):
-                        return {k: str(v) for k, v in data.items()}
-        except json.JSONDecodeError:
-            pass
-    try:
-        import browser_cookie3
-
-        chrome_cookies = browser_cookie3.chrome(domain_name=".facebook.com")
-        jar = {c.name: c.value for c in chrome_cookies}
-        if "c_user" in jar and "xs" in jar:
-            return jar
-    except Exception:
-        pass
-    return None
+    return load_fb_cookies()
 
 
 def _search_fallback(market: dict, *, num: int = 5) -> tuple[list[dict], str | None]:
@@ -101,8 +83,10 @@ def _search_fallback(market: dict, *, num: int = 5) -> tuple[list[dict], str | N
     if _load_fb_cookies():
         return [], "facebook_auth_required_no_cookies"
     import time as _time
-    from google_cse import is_configured, search_fb_posts as cse_search
+
     from ddg_search import search_fb_posts as ddg_search
+    from google_cse import is_configured
+    from google_cse import search_fb_posts as cse_search
 
     results: list[dict] = []
     if is_configured():
@@ -134,7 +118,9 @@ def _scrape_market(market: dict) -> tuple[list[dict], str | None]:
             from quality_gate import source_quality_score
 
             curl_posts = fetch_fb_posts(
-                market["name"], market["fb_handle"], max_posts=10,
+                market["name"],
+                market["fb_handle"],
+                max_posts=10,
             )
             if curl_posts:
                 print(f"  [fb curl] {market['name']}: {len(curl_posts)} posts", flush=True)
@@ -163,15 +149,17 @@ def _scrape_market(market: dict) -> tuple[list[dict], str | None]:
                 text = p.get("text") or p.get("post_text") or ""
                 ts = p.get("time")
                 url = p.get("post_url") or p.get("link") or ""
-                results.append({
-                    "market": market["name"],
-                    "post_id": str(post_id),
-                    "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
-                    "text": text,
-                    "url": url,
-                    "source": "facebook",
-                    "source_quality": source_quality_score("facebook"),
-                })
+                results.append(
+                    {
+                        "market": market["name"],
+                        "post_id": str(post_id),
+                        "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                        "text": text,
+                        "url": url,
+                        "source": "facebook",
+                        "source_quality": source_quality_score("facebook"),
+                    }
+                )
                 if len(results) >= 10:
                     break
             if results:
@@ -200,15 +188,20 @@ def _scrape_market(market: dict) -> tuple[list[dict], str | None]:
 def _scrape_web_url(market: dict, url: str, *, slug_suffix: str = "") -> dict | None:
     import re as _re
     import urllib.request as _ur
+
     try:
         req = _ur.Request(url, headers={"User-Agent": "Mozilla/5.0 (lobster-monitor)"})
         with _ur.urlopen(req, timeout=30) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
     except Exception as e:
-        print(f"  [web scrape error] {market['name']} ({url}): {type(e).__name__}: {e}", file=sys.stderr)
+        print(
+            f"  [web scrape error] {market['name']} ({url}): {type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
         return None
 
     from parse_web import parse_web_catalog_rows
+
     structured_rows = parse_web_catalog_rows(html)
     structured = [row.as_parsed_tuple() for row in structured_rows]
     text = _re.sub(r"<[^>]+>", " ", html)
@@ -242,12 +235,13 @@ def _scrape_reference(market: dict) -> dict | None:
         with _ur.urlopen(req, timeout=30) as resp:
             html = resp.read().decode("utf-8", errors="ignore")
     except Exception as e:
-        print(f"  [reference scrape error] {market['name']}: {type(e).__name__}: {e}", file=sys.stderr)
+        print(
+            f"  [reference scrape error] {market['name']}: {type(e).__name__}: {e}", file=sys.stderr
+        )
         return None
 
     text = _re.sub(r"<[^>]+>", " ", html)
     text = _re.sub(r"\s+", " ", text).strip()[:8000]
-    from parse_prices import parse_post
 
     parsed = parse_post(text)
     lobster_rows = [r for r in parsed if r[0] == "lobster_tier"]
@@ -312,6 +306,7 @@ def _process_gated_rows(
     *,
     send_alerts: bool,
     persist_seen: set[str],
+    cumulative_passed: dict[str, int],
     web_meta: list[dict] | None = None,
     structured_prices: list | None = None,
 ) -> list[dict]:
@@ -358,25 +353,37 @@ def _process_gated_rows(
             row.update(meta)
         if append_jsonl_deduped("prices.jsonl", row, seen=persist_seen):
             run_stats["rows_persisted"] = run_stats.get("rows_persisted", 0) + 1
+            cumulative_passed[market["name"]] = cumulative_passed.get(market["name"], 0) + 1
         else:
             run_stats["rows_deduped"] = run_stats.get("rows_deduped", 0) + 1
         if g.kind == "special":
-            special_items.append({
-                "key": g.key, "price": g.price, "unit": g.unit,
-                "confidence": g.confidence,
-            })
+            special_items.append(
+                {
+                    "key": g.key,
+                    "price": g.price,
+                    "unit": g.unit,
+                    "confidence": g.confidence,
+                }
+            )
         if g.kind == "lobster_tier" and g.key in LOBSTER_TIER_THRESHOLDS:
             threshold = LOBSTER_TIER_THRESHOLDS[g.key]
             if g.price < threshold:
                 if not send_alerts:
                     _record_suppressed_alert(
-                        run_stats, kind="lobster_tier", market=market["name"],
+                        run_stats,
+                        kind="lobster_tier",
+                        market=market["name"],
                         detail=f"{g.key}@${g.price:.2f}<${threshold:.2f}",
                         url=p.get("url", ""),
                     )
                 elif alert_lobster_drop(
-                    market["name"], g.key, g.price, p["url"], observed_at,
-                    threshold, confidence=g.confidence,
+                    market["name"],
+                    g.key,
+                    g.price,
+                    p["url"],
+                    observed_at,
+                    threshold,
+                    confidence=g.confidence,
                 ):
                     run_stats["lobster_alerts"] = run_stats.get("lobster_alerts", 0) + 1
         if g.kind == "oyster_tier" and g.key in OYSTER_TIER_THRESHOLDS:
@@ -385,13 +392,21 @@ def _process_gated_rows(
                 if g.price < threshold:
                     if not send_alerts:
                         _record_suppressed_alert(
-                            run_stats, kind="oyster_tier", market=market["name"],
+                            run_stats,
+                            kind="oyster_tier",
+                            market=market["name"],
                             detail=f"{g.key}@${g.price:.2f}<${threshold:.2f}/doz",
                             url=p.get("url", ""),
                         )
                     elif alert_oyster_drop(
-                        market["name"], g.key, g.price, p["url"], observed_at,
-                        threshold, g.unit, confidence=g.confidence,
+                        market["name"],
+                        g.key,
+                        g.price,
+                        p["url"],
+                        observed_at,
+                        threshold,
+                        g.unit,
+                        confidence=g.confidence,
                     ):
                         run_stats["oyster_alerts"] += 1
             elif g.unit == "lb":
@@ -399,36 +414,49 @@ def _process_gated_rows(
                 if g.price < lb_threshold:
                     if not send_alerts:
                         _record_suppressed_alert(
-                            run_stats, kind="oyster_tier", market=market["name"],
+                            run_stats,
+                            kind="oyster_tier",
+                            market=market["name"],
                             detail=f"{g.key}@${g.price:.2f}<${lb_threshold:.2f}/lb",
                             url=p.get("url", ""),
                         )
                     elif alert_oyster_drop(
-                        market["name"], g.key, g.price, p["url"], observed_at,
-                        lb_threshold, g.unit, confidence=g.confidence,
+                        market["name"],
+                        g.key,
+                        g.price,
+                        p["url"],
+                        observed_at,
+                        lb_threshold,
+                        g.unit,
+                        confidence=g.confidence,
                     ):
                         run_stats["oyster_alerts"] += 1
 
     for g in quarantined:
-        append_jsonl("quarantine.jsonl", {
-            "market": market["name"],
-            "observed_at": observed_at,
-            "post_id": p["post_id"],
-            "kind": g.kind,
-            "key": g.key,
-            "price": g.price,
-            "unit": g.unit,
-            "snippet": g.snippet,
-            "confidence": g.confidence,
-            "source_quality": g.source_quality,
-            "reject_reason": g.reject_reason,
-            "source": p.get("source", "unknown"),
-        })
+        append_jsonl(
+            "quarantine.jsonl",
+            {
+                "market": market["name"],
+                "observed_at": observed_at,
+                "post_id": p["post_id"],
+                "kind": g.kind,
+                "key": g.key,
+                "price": g.price,
+                "unit": g.unit,
+                "snippet": g.snippet,
+                "confidence": g.confidence,
+                "source_quality": g.source_quality,
+                "reject_reason": g.reject_reason,
+                "source": p.get("source", "unknown"),
+            },
+        )
         run_stats["rows_quarantined"] = run_stats.get("rows_quarantined", 0) + 1
 
     run_stats["rows_gated"] = run_stats.get("rows_gated", 0) + len(gated_passed) + len(quarantined)
     if gated_passed:
-        run_stats["confidence_sum"] = run_stats.get("confidence_sum", 0) + sum(g.confidence for g in gated_passed)
+        run_stats["confidence_sum"] = run_stats.get("confidence_sum", 0) + sum(
+            g.confidence for g in gated_passed
+        )
         run_stats["confidence_count"] = run_stats.get("confidence_count", 0) + len(gated_passed)
     return special_items
 
@@ -445,9 +473,15 @@ def _log_line(log_path: Path, message: str) -> None:
 
 
 def main(*, send_alerts: bool = False) -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     start_time = time.time()
     started = datetime.now(timezone.utc).isoformat()
     log_path = _setup_run_logging(started)
+    logger.info("lobster-price-monitor: starting alerts=%s", send_alerts)
     print(f"[{started}] lobster-price-monitor: starting", flush=True)
     _log_line(log_path, f"[{started}] lobster-price-monitor: starting alerts={send_alerts}")
 
@@ -477,10 +511,16 @@ def main(*, send_alerts: bool = False) -> int:
         "errors": [],
         "market_coverage": [],
     }
-    persist_seen: set[str] = {persist_key(r) for r in read_jsonl("prices.jsonl")}
+    existing_prices = read_jsonl("prices.jsonl")
+    persist_seen = {persist_key(r) for r in existing_prices}
+    cumulative_passed = count_passed_rows_by_market(existing_prices)
+    history_index = build_history_post_index()
+    if send_alerts:
+        begin_alert_run()
     coverage_entries: list[dict] = []
 
     for market in MARKETS:
+        logger.info("scraping %s (%s)", market["name"], market["fb_handle"])
         print(f"  scraping {market['name']} ({market['fb_handle']})...", flush=True)
         _log_line(log_path, f"scraping {market['name']}")
         posts, fb_blocker = _scrape_market(market)
@@ -507,19 +547,26 @@ def main(*, send_alerts: bool = False) -> int:
         if not posts and not blocker:
             blocker = "no_posts_from_configured_sources"
 
-        run_stats["errors"].append({
-            "market": market["name"],
-            "fb_handle": market["fb_handle"],
-            "fetched": len(posts),
-            "blocker": blocker,
-            "source_used": source_used,
-        })
+        market_name = market["name"]
+        if not posts and blocker:
+            logger.warning("%s blocked: %s", market_name, blocker)
 
-        seen = seen_post_ids("history.jsonl", market["name"])
+        run_stats["errors"].append(
+            {
+                "market": market_name,
+                "fb_handle": market["fb_handle"],
+                "fetched": len(posts),
+                "blocker": blocker,
+                "source_used": source_used,
+            }
+        )
+
+        seen = history_index.get(market_name, set())
         new_posts = [p for p in posts if p["post_id"] not in seen]
         # Web catalogs change intraday — always re-parse structured prices.
         posts_to_price = [
-            p for p in posts
+            p
+            for p in posts
             if p["post_id"] not in seen
             or "structured_prices" in p
             or p.get("source") in ("facebook", "facebook_search", "reference")
@@ -528,10 +575,15 @@ def main(*, send_alerts: bool = False) -> int:
         print(f"    fetched {len(posts)} posts, {len(new_posts)} new", flush=True)
 
         for p in posts:
+            post_id = str(p["post_id"])
+            if post_id in seen:
+                continue
             row = dict(p)
             if "source_quality" not in row:
                 row["source_quality"] = source_quality_score(p.get("source", "unknown"))
             append_jsonl("history.jsonl", row)
+            seen.add(post_id)
+            history_index.setdefault(market_name, set()).add(post_id)
 
         for p in posts_to_price:
             observed_at = p["timestamp"]
@@ -541,21 +593,29 @@ def main(*, send_alerts: bool = False) -> int:
             if "structured_prices" in p:
                 parsed = [tuple(sp) for sp in p["structured_prices"]]
                 meta = [
-                    {"price_pos": None, "bare_price": False, "structured": True}
-                    for _ in parsed
+                    {"price_pos": None, "bare_price": False, "structured": True} for _ in parsed
                 ]
             else:
                 parsed, meta = parse_post_with_meta(full_text)
 
             run_stats["prices_parsed"] += len(parsed)
             passed, quarantined = gate_rows(
-                parsed, source=source, observed_at=observed_at,
-                full_text=full_text, parse_meta=meta,
+                parsed,
+                source=source,
+                observed_at=observed_at,
+                full_text=full_text,
+                parse_meta=meta,
             )
             special_items = _process_gated_rows(
-                passed, quarantined, market, p, observed_at, run_stats,
+                passed,
+                quarantined,
+                market,
+                p,
+                observed_at,
+                run_stats,
                 send_alerts=send_alerts,
                 persist_seen=persist_seen,
+                cumulative_passed=cumulative_passed,
                 web_meta=p.get("structured_meta"),
                 structured_prices=p.get("structured_prices"),
             )
@@ -567,50 +627,61 @@ def main(*, send_alerts: bool = False) -> int:
                 if gated_specials and is_specials_post(full_text):
                     if not send_alerts:
                         _record_suppressed_alert(
-                            run_stats, kind="special", market=market["name"],
+                            run_stats,
+                            kind="special",
+                            market=market["name"],
                             detail=f"specials_post:{len(gated_specials)}_items",
                             url=p.get("url", ""),
                         )
                     elif alert_specials_post(
-                        market["name"], p["url"], full_text, observed_at,
-                        special_items=gated_specials, source=source,
+                        market["name"],
+                        p["url"],
+                        full_text,
+                        observed_at,
+                        special_items=gated_specials,
+                        source=source,
                     ):
                         run_stats["special_alerts"] += 1
             else:
                 # Web catalog specials diff alerting
-                current_specials = {
-                    (g.key, g.price, g.unit) for g in passed if g.kind == "special"
-                }
+                current_specials = {(g.key, g.price, g.unit) for g in passed if g.kind == "special"}
                 prev_specials = last_web_specials(market["name"])
                 new_special_rows = current_specials - prev_specials
                 if new_special_rows:
                     new_items = [
                         {"key": k, "price": pr, "unit": u, "confidence": g.confidence}
-                        for g in passed if g.kind == "special"
+                        for g in passed
+                        if g.kind == "special"
                         for k, pr, u in [(g.key, g.price, g.unit)]
                         if (k, pr, u) in new_special_rows and g.confidence >= 70
                     ]
                     if new_items:
                         if not send_alerts:
                             _record_suppressed_alert(
-                                run_stats, kind="web_special", market=market["name"],
+                                run_stats,
+                                kind="web_special",
+                                market=market["name"],
                                 detail=f"new_web_specials:{len(new_items)}",
                                 url=p.get("url", ""),
                             )
                         elif alert_web_specials(
-                            market["name"], p["url"], observed_at, new_items,
+                            market["name"],
+                            p["url"],
+                            observed_at,
+                            new_items,
                         ):
                             run_stats["special_alerts"] += 1
-                save_web_snapshot(market["name"], [
-                    {"key": g.key, "price": g.price, "unit": g.unit}
-                    for g in passed if g.kind == "special"
-                ])
+                save_web_snapshot(
+                    market["name"],
+                    [
+                        {"key": g.key, "price": g.price, "unit": g.unit}
+                        for g in passed
+                        if g.kind == "special"
+                    ],
+                )
 
-        cumulative_passed = sum(
-            1 for r in read_jsonl("prices.jsonl")
-            if r.get("market") == market["name"] and r.get("gate_passed", True)
-        )
-        has_live_data = market_passed > 0 or cumulative_passed > 0
+        cumulative_passed_count = cumulative_passed.get(market_name, 0)
+        has_live_data = market_passed > 0 or cumulative_passed_count > 0
         if has_live_data:
             status = "live"
             market_blocker = None
@@ -626,7 +697,7 @@ def main(*, send_alerts: bool = False) -> int:
             "name": market["name"],
             "posts_fetched": len(posts),
             "passed_rows": market_passed,
-            "cumulative_passed_rows": cumulative_passed,
+            "cumulative_passed_rows": cumulative_passed_count,
             "source_used": source_used,
             "blocker": market_blocker,
             "status": status,
@@ -636,14 +707,18 @@ def main(*, send_alerts: bool = False) -> int:
         time.sleep(2)
 
     run_stats["market_coverage"] = coverage_entries
-    write_json("market-coverage.json", {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "markets": coverage_entries,
-    })
+    write_json(
+        "market-coverage.json",
+        {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "markets": coverage_entries,
+        },
+    )
 
     if run_stats["confidence_count"]:
         run_stats["avg_confidence"] = round(
-            run_stats["confidence_sum"] / run_stats["confidence_count"], 1,
+            run_stats["confidence_sum"] / run_stats["confidence_count"],
+            1,
         )
     run_stats["duration_seconds"] = round(time.time() - start_time, 2)
     append_jsonl("run-log.jsonl", run_stats)
@@ -651,6 +726,7 @@ def main(*, send_alerts: bool = False) -> int:
 
     try:
         from board_render import write_html_board
+
         board_path = write_html_board()
         print(f"  [board] wrote {board_path}", flush=True)
     except Exception as e:
@@ -658,6 +734,7 @@ def main(*, send_alerts: bool = False) -> int:
 
     try:
         from state import compact_prices_jsonl, rotate_state_files
+
         kept = compact_prices_jsonl(min_confidence=0)
         print(f"  [compact] prices.jsonl → {kept} rows", flush=True)
         rotate_state_files(max_days=90)

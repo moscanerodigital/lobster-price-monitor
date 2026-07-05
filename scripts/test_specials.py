@@ -1,4 +1,5 @@
 """Tests for specials parsing, gating, and board capping."""
+
 from __future__ import annotations
 
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from board_render import _cap_specials_by_market, build_board
+from board_render import _cap_specials_by_market
 from parse_prices import is_specials_post, parse_post
 from parse_web import parse_web_catalog
 from quality_gate import gate_rows
@@ -89,14 +90,16 @@ def test_cap_specials_preserves_all_markets():
     items = []
     for i, market in enumerate(("Market A", "Market B", "Market C", "Market D", "Market E")):
         for j in range(4):
-            items.append({
-                "market": market,
-                "market_short": market,
-                "label": f"Item {j}",
-                "price": 10 + j,
-                "sort_price": 10 + j,
-                "confidence": 80 - j,
-            })
+            items.append(
+                {
+                    "market": market,
+                    "market_short": market,
+                    "label": f"Item {j}",
+                    "price": 10 + j,
+                    "sort_price": 10 + j,
+                    "confidence": 80 - j,
+                }
+            )
     capped = _cap_specials_by_market(items)
     markets_shown = {item["market"] for item in capped}
     assert markets_shown == {"Market A", "Market B", "Market C", "Market D", "Market E"}

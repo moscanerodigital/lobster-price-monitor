@@ -9,8 +9,9 @@ Checks:
 - Specials board coverage has active specials
 - Five Islands has valid disposition (blocked/partial with reason or manually imported price)
 """
+
 from __future__ import annotations
-import json
+
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from board_render import build_board
-from state import read_jsonl, latest_run_log
+from state import latest_run_log, read_jsonl
 
 
 class GateFailure(Exception):
@@ -65,7 +66,7 @@ def check_scheduling() -> None:
         scrape_found = False
         serve_found = False
         serve_running = False
-        
+
         for line in output.splitlines():
             parts = line.split()
             if len(parts) >= 3:
@@ -76,14 +77,14 @@ def check_scheduling() -> None:
                     serve_found = True
                     if parts[0] != "-" and int(parts[0]) > 0:
                         serve_running = True
-                        
+
         if not scrape_found:
             _fail("launchd agent 'com.erik.lobster-price-monitor.scrape' not loaded")
         if not serve_found:
             _fail("launchd agent 'com.erik.lobster-price-monitor.serve' not loaded")
         if not serve_running:
             _fail("launchd agent 'com.erik.lobster-price-monitor.serve' is loaded but not running")
-            
+
     elif sys.platform.startswith("linux"):
         # Check systemd
         proc = subprocess.run(
@@ -93,7 +94,7 @@ def check_scheduling() -> None:
         )
         if "active" not in proc.stdout:
             _fail("systemd service 'lobster-price-monitor-serve' is not active")
-            
+
         proc2 = subprocess.run(
             ["systemctl", "list-timers", "--all"],
             capture_output=True,
@@ -123,7 +124,8 @@ def check_specials_board() -> None:
     if not specials:
         # Check if there are active specials in prices.jsonl
         rows = [
-            r for r in read_jsonl("prices.jsonl")
+            r
+            for r in read_jsonl("prices.jsonl")
             if r.get("kind") == "special" and r.get("gate_passed") is not False
         ]
         if rows:
@@ -140,24 +142,34 @@ def check_five_islands_disposition() -> None:
     five_islands = coverage.get("Five Islands Lobster Co.", {})
     if not five_islands:
         _fail("Five Islands Lobster Co. missing from market coverage")
-        
+
     status = five_islands.get("status")
     reason = five_islands.get("reason", "")
-    
+
     # Check if there's a manual import row for Five Islands
     rows = [
-        r for r in read_jsonl("prices.jsonl")
+        r
+        for r in read_jsonl("prices.jsonl")
         if r.get("market") == "Five Islands Lobster Co." and r.get("source") == "manual"
     ]
-    
+
     if rows:
         if status != "live":
-            _fail(f"manual price imported for Five Islands but status is '{status}' instead of 'live'")
+            _fail(
+                f"manual price imported for Five Islands but status is '{status}' instead of 'live'"
+            )
         print("  ✓ Five Islands is live via manual import")
     else:
         if status not in ("blocked", "partial"):
-            _fail(f"Five Islands has no manual price and status is '{status}' (should be blocked/partial)")
-        if not reason or "fetched but no prices" not in reason.lower() and "menu reference" not in reason.lower() and "unavailable" not in reason.lower():
+            _fail(
+                f"Five Islands has no manual price and status is '{status}' (should be blocked/partial)"
+            )
+        if (
+            not reason
+            or "fetched but no prices" not in reason.lower()
+            and "menu reference" not in reason.lower()
+            and "unavailable" not in reason.lower()
+        ):
             _fail(f"Five Islands blocker reason is invalid or missing: '{reason}'")
         print(f"  ✓ Five Islands is correctly quarantined/blocked: '{reason}'")
 
@@ -165,7 +177,7 @@ def check_five_islands_disposition() -> None:
 def main() -> int:
     print("=== Gate C production verification ===")
     checks: list[tuple[str, str]] = []
-    
+
     steps = [
         ("gate_bplus", check_gate_bplus),
         ("malph_completion", check_malph_completion),
@@ -174,7 +186,7 @@ def main() -> int:
         ("specials_board", check_specials_board),
         ("five_islands_disposition", check_five_islands_disposition),
     ]
-    
+
     failed = False
     for name, fn in steps:
         try:
@@ -188,12 +200,12 @@ def main() -> int:
             print(f"  ✗ {name} error: {type(e).__name__}: {e}", file=sys.stderr)
             checks.append((name, "ERROR"))
             failed = True
-            
+
     print()
     if failed:
         print("GATE C PRODUCTION VERIFICATION FAILED", file=sys.stderr)
         return 1
-        
+
     print("GATE C PRODUCTION VERIFICATION PASSED")
     return 0
 

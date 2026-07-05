@@ -10,6 +10,7 @@ Criteria (Gate B+):
   - Latest scrape younger than 24h
   - Deployment smoke: board.html render succeeds
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from board_render import build_board, get_board, write_html_board
+from board_render import build_board, write_html_board
 from markets import MARKETS
 from state import DATA_DIR, latest_run_log
 from verify_aaa_gate import run_verification
@@ -79,7 +80,10 @@ def check_lobster_board_coverage(*, min_markets: int) -> tuple[list[dict], set[s
         entry = coverage.get(name, {})
         if entry.get("status") == "partial":
             reason = str(entry.get("reason", "")).lower()
-            if "five islands" in entry.get("short", "").lower() or name == "Five Islands Lobster Co.":
+            if (
+                "five islands" in entry.get("short", "").lower()
+                or name == "Five Islands Lobster Co."
+            ):
                 accounted.add(name)
             elif reason and "unavailable" not in reason:
                 accounted.add(name)
@@ -92,6 +96,7 @@ def check_lobster_board_coverage(*, min_markets: int) -> tuple[list[dict], set[s
         )
     if len(markets_on_board) < min_markets - 1:
         from state import read_jsonl
+
         data_markets = {
             r.get("market", "")
             for r in read_jsonl("prices.jsonl")
@@ -103,6 +108,7 @@ def check_lobster_board_coverage(*, min_markets: int) -> tuple[list[dict], set[s
         missing_data = sorted(data_markets - markets_on_board)
         if missing_data:
             from board_render import short_market
+
             labels = ", ".join(short_market(m) for m in missing_data)
             _fail(f"markets with lobster data not on board: {labels}")
         _fail(
@@ -116,19 +122,11 @@ def check_footer_consistency() -> None:
     board = build_board()
     lobster_count = len({i.get("market") for i in board["sections"].get("lobster", [])})
     summary = board.get("coverage_summary", "")
-    live_on_board = sum(
-        1 for c in board.get("market_coverage", [])
-        if c.get("status") == "live"
-    )
+    live_on_board = sum(1 for c in board.get("market_coverage", []) if c.get("status") == "live")
     if live_on_board < lobster_count:
-        _fail(
-            f"footer says {live_on_board} live but {lobster_count} markets on lobster board"
-        )
+        _fail(f"footer says {live_on_board} live but {lobster_count} markets on lobster board")
     if "awaiting" in summary.lower() and lobster_count >= MIN_LOBSTER_MARKETS:
-        partial = sum(
-            1 for c in board.get("market_coverage", [])
-            if c.get("status") == "partial"
-        )
+        partial = sum(1 for c in board.get("market_coverage", []) if c.get("status") == "partial")
         if partial == 0:
             _fail(f"coverage summary mentions awaiting but no partial markets: {summary}")
 

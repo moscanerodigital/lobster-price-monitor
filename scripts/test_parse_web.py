@@ -1,4 +1,5 @@
 """Unit tests for parse_web catalog parsing."""
+
 import sys
 from pathlib import Path
 

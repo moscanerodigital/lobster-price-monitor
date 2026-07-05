@@ -39,16 +39,20 @@ Requires `~/.openclaw/secrets/telegram/herb.token`.
 ## Serve the board
 
 ```bash
-.venv/bin/python scripts/serve_board.py
+make serve
+# or: .venv/bin/python scripts/serve_board.py --port 8765 --host 0.0.0.0
 ```
 
 - Local: `http://127.0.0.1:8765/board.html`
 - LAN: printed on startup (binds `0.0.0.0` by default)
+- Only `board.html` is served; JSONL data files return 403
 
 ## Health / readiness
 
 ```bash
 .venv/bin/python scripts/health_check.py
+# Append JSON snapshot to logs/health.jsonl:
+.venv/bin/python scripts/health_check.py --log
 ```
 
 Reports latest run timestamp, per-market coverage, passed/quarantined counts, blocked markets with reasons, and whether alerts were enabled on the last run.
@@ -72,12 +76,23 @@ Runtime data lives in `data/` (git-ignored): `prices.jsonl`, `quarantine.jsonl`,
 | Secret | Path | Purpose |
 |---|---|---|
 | Telegram bot token | `~/.openclaw/secrets/telegram/herb.token` | Price-drop alerts (`--alerts` only) |
+| Telegram chat ID | `~/.openclaw/secrets/telegram/chat_id` or env `LOBSTER_TELEGRAM_CHAT_ID` | Alert destination |
 | Facebook cookies | `~/.openclaw/secrets/facebook-cookies.json` | Unlock FB-only markets |
 | Google CSE | env / `google_cse.py` config | Search fallback before DDG |
 
 Without FB cookies, six markets remain blocked (DDG captcha-prone). The board still serves real prices from web catalogs and marks blocked markets in **SOURCE COVERAGE**.
 
 ## Scheduling
+
+Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Linux or `/Users/you/lobster-price-monitor` on macOS). Canonical unit files:
+
+| Platform | Scrape | Serve |
+|----------|--------|-------|
+| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-serve.service` |
+| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` |
+| cron | `deploy/crontab.example` | run serve via systemd/launchd or `@reboot` |
+
+Replace `LOBSTER_ROOT` placeholders in plist files before `launchctl load`. Root-level `deploy/*.service` and `deploy/*.plist` are pointers to the canonical copies above.
 
 ### macOS launchd (example)
 

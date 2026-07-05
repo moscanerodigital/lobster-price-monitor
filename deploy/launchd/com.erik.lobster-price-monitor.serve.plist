@@ -8,8 +8,8 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/.venv/bin/python</string>
-    <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/scripts/serve_board.py</string>
+    <string>LOBSTER_ROOT/.venv/bin/python</string>
+    <string>LOBSTER_ROOT/scripts/serve_board.py</string>
     <string>--port</string>
     <string>8765</string>
     <string>--host</string>
@@ -17,7 +17,7 @@
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor</string>
+  <string>LOBSTER_ROOT</string>
 
   <key>KeepAlive</key>
   <true/>
@@ -26,8 +26,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/logs/serve.log</string>
+  <string>LOBSTER_ROOT/logs/serve.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/logs/serve.err</string>
+  <string>LOBSTER_ROOT/logs/serve.err</string>
 </dict>
 </plist>

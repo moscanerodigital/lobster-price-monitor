@@ -7,6 +7,7 @@ Gate C (Plausibility): price in band + post freshness
 Rows must pass all three gates to surface. Failures are quarantined with the
 first failing gate recorded as reject_reason.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 
 from parse_prices import (
     ParsedRow,
-    SPECIALS_POST_KEYWORDS,
     _clause_of,
     _find_special_kw,
     _find_special_kw_in_clause,
@@ -68,10 +68,33 @@ _DEFAULT_SPECIAL_BAND = (6.0, 40.0)
 _DEFAULT_EA_BAND = (8.0, 45.0)
 
 CANONICAL_SPECIAL_KEYS = {
-    "halibut", "scallops", "clams", "shrimp", "haddock", "salmon", "cod",
-    "pollock", "tuna", "swordfish", "chowder", "bisque", "lobster_roll",
-    "roll", "crab", "smoked", "stew", "mac", "bake", "ravioli",
-    "arctic_char", "bluefish", "sole", "flounder", "hake", "mussels", "monkfish",
+    "halibut",
+    "scallops",
+    "clams",
+    "shrimp",
+    "haddock",
+    "salmon",
+    "cod",
+    "pollock",
+    "tuna",
+    "swordfish",
+    "chowder",
+    "bisque",
+    "lobster_roll",
+    "roll",
+    "crab",
+    "smoked",
+    "stew",
+    "mac",
+    "bake",
+    "ravioli",
+    "arctic_char",
+    "bluefish",
+    "sole",
+    "flounder",
+    "hake",
+    "mussels",
+    "monkfish",
     "fish_medley",
 }
 
@@ -97,6 +120,7 @@ class GatedRow:
 @dataclass
 class GateStats:
     """Aggregate gate failure counts for run-log."""
+
     gate_a_failed: int = 0
     gate_b_failed: int = 0
     gate_c_failed: int = 0
@@ -190,7 +214,9 @@ def _compute_raw_confidence(
 
     kw = None
     if full_text and price_pos is not None:
-        kw = _find_special_kw_in_clause(full_text, price_pos) or _find_special_kw(full_text, price_pos)
+        kw = _find_special_kw_in_clause(full_text, price_pos) or _find_special_kw(
+            full_text, price_pos
+        )
 
     if kind == "lobster_tier":
         confidence += 20
@@ -320,7 +346,12 @@ def _gate_c_plausibility(
         return True, None
 
     floor_ok, floor_reason = _gate_c_lobster_market_floor(
-        kind, key, price, unit, source, structured=structured,
+        kind,
+        key,
+        price,
+        unit,
+        source,
+        structured=structured,
     )
     if not floor_ok:
         return False, floor_reason
@@ -358,41 +389,91 @@ def score_row(
     gate_a_ok, sq, gate_a_reason = _gate_a_source(source)
     if not gate_a_ok:
         return GatedRow(
-            kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=0, raw_confidence=0, source_quality=sq,
-            gate_passed=False, gate_a_passed=False, gate_b_passed=False,
-            gate_c_passed=False, reject_reason=gate_a_reason, failed_gate="A",
+            kind=kind,
+            key=key,
+            price=price,
+            unit=unit,
+            snippet=snippet,
+            confidence=0,
+            raw_confidence=0,
+            source_quality=sq,
+            gate_passed=False,
+            gate_a_passed=False,
+            gate_b_passed=False,
+            gate_c_passed=False,
+            reject_reason=gate_a_reason,
+            failed_gate="A",
         )
 
     raw = _compute_raw_confidence(
-        row, source=source, full_text=full_text,
-        price_pos=price_pos, bare_price=bare_price, structured=structured,
+        row,
+        source=source,
+        full_text=full_text,
+        price_pos=price_pos,
+        bare_price=bare_price,
+        structured=structured,
     )
     gate_b_ok, effective, gate_b_reason = _gate_b_confidence(kind, raw, sq)
     if not gate_b_ok:
         return GatedRow(
-            kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=effective, raw_confidence=raw, source_quality=sq,
-            gate_passed=False, gate_a_passed=True, gate_b_passed=False,
-            gate_c_passed=False, reject_reason=gate_b_reason, failed_gate="B",
+            kind=kind,
+            key=key,
+            price=price,
+            unit=unit,
+            snippet=snippet,
+            confidence=effective,
+            raw_confidence=raw,
+            source_quality=sq,
+            gate_passed=False,
+            gate_a_passed=True,
+            gate_b_passed=False,
+            gate_c_passed=False,
+            reject_reason=gate_b_reason,
+            failed_gate="B",
         )
 
     gate_c_ok, gate_c_reason = _gate_c_plausibility(
-        kind, key, price, unit, observed_at, source, structured=structured,
+        kind,
+        key,
+        price,
+        unit,
+        observed_at,
+        source,
+        structured=structured,
     )
     if not gate_c_ok:
         return GatedRow(
-            kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-            confidence=effective, raw_confidence=raw, source_quality=sq,
-            gate_passed=False, gate_a_passed=True, gate_b_passed=True,
-            gate_c_passed=False, reject_reason=gate_c_reason, failed_gate="C",
+            kind=kind,
+            key=key,
+            price=price,
+            unit=unit,
+            snippet=snippet,
+            confidence=effective,
+            raw_confidence=raw,
+            source_quality=sq,
+            gate_passed=False,
+            gate_a_passed=True,
+            gate_b_passed=True,
+            gate_c_passed=False,
+            reject_reason=gate_c_reason,
+            failed_gate="C",
         )
 
     return GatedRow(
-        kind=kind, key=key, price=price, unit=unit, snippet=snippet,
-        confidence=effective, raw_confidence=raw, source_quality=sq,
-        gate_passed=True, gate_a_passed=True, gate_b_passed=True,
-        gate_c_passed=True, reject_reason=None, failed_gate=None,
+        kind=kind,
+        key=key,
+        price=price,
+        unit=unit,
+        snippet=snippet,
+        confidence=effective,
+        raw_confidence=raw,
+        source_quality=sq,
+        gate_passed=True,
+        gate_a_passed=True,
+        gate_b_passed=True,
+        gate_c_passed=True,
+        reject_reason=None,
+        failed_gate=None,
     )
 
 

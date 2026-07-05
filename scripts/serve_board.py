@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Serve data/board.html on a stable localhost/LAN port."""
+
 from __future__ import annotations
 
 import argparse
 import http.server
+import os
 import socket
 import sys
 from pathlib import Path
@@ -12,10 +14,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from state import DATA_DIR
 
+ALLOWED_PATHS = frozenset({"/", "/board.html", "/index.html"})
+
 
 class BoardHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, directory: str | None = None, **kwargs):
         super().__init__(*args, directory=directory, **kwargs)
+
+    def do_GET(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        if path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/board.html")
+            self.end_headers()
+            return
+        if path not in ALLOWED_PATHS:
+            self.send_error(403, "Forbidden")
+            return
+        if path == "/index.html":
+            self.path = "/board.html"
+        super().do_GET()
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
@@ -32,10 +50,22 @@ def _lan_ip() -> str:
         return "127.0.0.1"
 
 
+def _default_host() -> str:
+    return os.environ.get("BIND") or os.environ.get("HOST") or "0.0.0.0"
+
+
+def _default_port() -> int:
+    raw = os.environ.get("PORT", "8765")
+    try:
+        return int(raw)
+    except ValueError:
+        return 8765
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Serve seafood board HTML")
-    parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=_default_port())
+    parser.add_argument("--host", "--bind", dest="host", default=_default_host())
     args = parser.parse_args()
 
     data_dir = DATA_DIR.resolve()
