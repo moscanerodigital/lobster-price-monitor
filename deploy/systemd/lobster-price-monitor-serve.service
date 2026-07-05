@@ -6,12 +6,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=erik
-WorkingDirectory=/opt/lobster-price-monitor
-ExecStart=/opt/lobster-price-monitor/.venv/bin/python scripts/serve_board.py --port 8765 --host 0.0.0.0
+WorkingDirectory=LOBSTER_ROOT
+ExecStart=LOBSTER_ROOT/.venv/bin/python scripts/serve_board.py --port 8765 --host 0.0.0.0
 Restart=on-failure
 RestartSec=5
-StandardOutput=append:/opt/lobster-price-monitor/logs/serve.log
-StandardError=append:/opt/lobster-price-monitor/logs/serve.err
+StandardOutput=append:LOBSTER_ROOT/logs/serve.log
+StandardError=append:LOBSTER_ROOT/logs/serve.err
 
 [Install]
 WantedBy=multi-user.target

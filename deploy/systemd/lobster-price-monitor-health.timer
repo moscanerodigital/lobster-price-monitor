@@ -1,0 +1,10 @@
+[Unit]
+Description=Lobster Price Monitor daily health snapshot timer
+Requires=lobster-price-monitor-health.service
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -60,11 +60,50 @@ def test_crontab_example_uses_run_scrape_sh() -> None:
     assert "LOBSTER_ALERTS=1" in crontab
 
 
+def test_systemd_services_use_lobster_root_placeholder() -> None:
+    stale = "/opt/lobster-price-monitor"
+    for name in (
+        "lobster-price-monitor-scrape.service",
+        "lobster-price-monitor-scrape.ops.service",
+        "lobster-price-monitor-serve.service",
+    ):
+        text = (SYSTEMD / name).read_text(encoding="utf-8")
+        assert stale not in text, f"{name} still contains hardcoded install path"
+        assert "LOBSTER_ROOT" in text, f"{name} should use LOBSTER_ROOT placeholder"
+
+
+def test_systemd_timers_exist() -> None:
+    for name in (
+        "lobster-price-monitor-scrape.timer",
+        "lobster-price-monitor-scrape.ops.timer",
+        "lobster-price-monitor-health.timer",
+    ):
+        assert (SYSTEMD / name).exists(), f"{name} missing"
+
+
+def test_health_units_exist() -> None:
+    health_plist = LAUNCHD / "com.erik.lobster-price-monitor.health.plist"
+    assert health_plist.exists(), "health launchd plist missing"
+    text = health_plist.read_text(encoding="utf-8")
+    assert "health_check.py" in text
+    assert "--log" in text
+    assert "LOBSTER_ROOT" in text
+
+    health_service = SYSTEMD / "lobster-price-monitor-health.service"
+    assert health_service.exists(), "health systemd service missing"
+    svc_text = health_service.read_text(encoding="utf-8")
+    assert "LOBSTER_ROOT" in svc_text
+    assert "/opt/lobster-price-monitor" not in svc_text
+
+
 def main() -> int:
     tests = [
         test_launchd_ops_label_differs_from_dry_run,
         test_launchd_plists_have_weekend_schedule,
         test_systemd_ops_timer_exists_and_references_ops_service,
+        test_systemd_services_use_lobster_root_placeholder,
+        test_systemd_timers_exist,
+        test_health_units_exist,
         test_crontab_example_uses_run_scrape_sh,
     ]
     failed = 0

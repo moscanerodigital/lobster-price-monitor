@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-ops promote-ops regen-bplus-fixtures
+.PHONY: install scrape serve health verify verify-core test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops install-scheduler regen-bplus-fixtures
 
 install:
 	python3 -m venv $(VENV)
@@ -30,7 +30,7 @@ seed-ci-bplus-fixtures:
 	$(PYTHON) scripts/refresh_ci_fixture_dates.py
 	$(PYTHON) scripts/board.py --html
 
-verify:
+verify-core:
 	@test -f data/prices.jsonl || $(MAKE) seed-ci-fixtures
 	$(PYTHON) scripts/test_parse.py
 	$(PYTHON) scripts/test_parse_web.py
@@ -43,6 +43,9 @@ verify:
 	$(PYTHON) scripts/test_verify_ops_ci.py
 	$(PYTHON) scripts/test_deploy_units.py
 	$(PYTHON) scripts/test_scheduling_gates.py
+
+verify: verify-core
+	$(PYTHON) scripts/test_verify_deploy_ci.py
 	$(PYTHON) scripts/verify_aaa_gate.py
 
 verify-next: verify
@@ -51,8 +54,14 @@ verify-next: verify
 verify-production: verify-next
 	$(PYTHON) scripts/verify_production_gate.py
 
+verify-deploy: verify-core
+	$(PYTHON) scripts/verify_deploy_gate.py
+
 verify-ops: verify-production
 	$(PYTHON) scripts/verify_ops_gate.py
+
+install-scheduler:
+	bash scripts/install_scheduler.sh
 
 promote-ops:
 	bash scripts/promote_ops.sh
@@ -69,6 +78,9 @@ verify-ci: seed-ci-fixtures verify
 
 verify-production-ci: seed-ci-bplus-fixtures verify
 	$(PYTHON) scripts/verify_production_gate.py --skip-scheduling
+
+verify-deploy-ci: seed-ci-bplus-fixtures verify-core
+	$(PYTHON) scripts/verify_deploy_gate.py --skip-scheduling --skip-verify-suite
 
 verify-ops-ci: seed-ci-bplus-fixtures verify
 	$(PYTHON) scripts/update_ralph_learnings.py

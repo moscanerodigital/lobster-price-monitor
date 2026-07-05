@@ -89,8 +89,9 @@ $LOBSTER_ROOT/
 | **B+** | PASS | `.venv/bin/python scripts/verify_next_gate.py` |
 | **C (Production)** | PASS | `.venv/bin/python scripts/verify_production_gate.py` |
 | **D (Ops)** | PASS | `.venv/bin/python scripts/verify_ops_gate.py` |
+| **Deploy** | PASS | `.venv/bin/python scripts/verify_deploy_gate.py` |
 
-**CI:** `make verify-ci` (AAA) · `make verify-next-ci` (Gate B+) · `make verify-production-ci` (Gate C) · `make verify-ops-ci` (Gate D)
+**CI:** `make verify-ci` (AAA) · `make verify-next-ci` (Gate B+) · `make verify-deploy-ci` (Deploy) · `make verify-production-ci` (Gate C) · `make verify-ops-ci` (Gate D)
 
 **Gate B+ criteria:** AAA passes · all tests pass · every market with gated lobster data on the board (≥7 when Five Islands blocked) · footer coverage matches board · scrape &lt;24h · health smoke test · mobile board HTML.
 
@@ -99,6 +100,10 @@ $LOBSTER_ROOT/
 **Gate D (Ops) criteria:** Gate C passes on host · ops scheduler loaded (dry-run unloaded) · `LOBSTER_ALERTS=1` on ops unit · `verify_production_gate.py --skip-scheduling` passes in CI · RALPH Learnings auto-populated from run-log. Host promotion: `make promote-ops` or `bash scripts/promote_ops.sh`; `make verify-ops` (no skip flags) requires ops unit loaded + Telegram secrets.
 
 **Gate D Wave 3 (2026-07-05):** Ops promotion automation (`scripts/promote_ops.sh`), host gate alignment (production gate accepts dry-run or ops scheduler; ops gate requires ops loaded + dry-run unloaded).
+
+**Gate D Wave 4 (2026-07-05):** Host deployment automation — `scripts/install_scheduler.sh` (Phase 2 dry-run scheduler + health timer), Linux `LOBSTER_ROOT` templating in systemd units, `scripts/verify_deploy_gate.py` + `make verify-deploy` / `make verify-deploy-ci`.
+
+**Deploy gate criteria:** `make verify-core` passes · `data/board.html` exists · `health_check.py` passes · dry-run scheduler loaded (ops **not** loaded) · serve unit running. CI: `--skip-scheduling --skip-verify-suite`.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
 
@@ -115,7 +120,7 @@ $LOBSTER_ROOT/
 | Harbor Fish | soft $14.30 · hard $15.30 | 70 | Web + FB |
 | Five Islands | — (partial) | — | No gated $/lb; see `setup_fb_cookies.md` |
 
-**Ops:** `make promote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
+**Ops:** `make install-scheduler` · `make verify-deploy` · `make promote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
 
 ## Project complete
 

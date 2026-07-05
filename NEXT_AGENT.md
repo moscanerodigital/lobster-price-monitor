@@ -46,10 +46,23 @@ make serve                  # confirm http://127.0.0.1:8765/board.html
 
 ## Phase 2 — Scheduler (dry-run first)
 
-1. Edit `LOBSTER_ROOT` placeholders in unit files under [deploy/launchd/](deploy/launchd/) or [deploy/systemd/](deploy/systemd/).
-2. Install and enable units:
+**Recommended (one command):**
 
-**macOS (launchd):**
+```bash
+# Preview planned actions
+bash scripts/install_scheduler.sh --dry-run
+
+# Install dry-run scrape + serve + daily health-log schedulers
+make install-scheduler
+# or: bash scripts/install_scheduler.sh
+
+# Confirm deploy gate (dry-run loaded, ops not yet promoted)
+make verify-deploy
+```
+
+`install_scheduler.sh` substitutes `LOBSTER_ROOT` into launchd plists (macOS) or systemd units (Linux), loads scrape + serve, and optionally installs the daily health-log unit. Pass `--skip-health` for minimal install.
+
+**Manual fallback (macOS):**
 
 ```bash
 # Replace LOBSTER_ROOT in plists, then copy to LaunchAgents
@@ -61,18 +74,21 @@ launchctl load ~/Library/LaunchAgents/com.erik.lobster-price-monitor.serve.plist
 
 Labels: `com.erik.lobster-price-monitor.scrape`, `com.erik.lobster-price-monitor.serve`
 
-**Linux (systemd):**
+**Manual fallback (Linux):**
 
 ```bash
-sudo cp deploy/systemd/lobster-price-monitor-scrape.service /etc/systemd/system/
-sudo cp deploy/systemd/lobster-price-monitor-scrape.timer /etc/systemd/system/
-sudo cp deploy/systemd/lobster-price-monitor-serve.service /etc/systemd/system/
+# Substitute LOBSTER_ROOT in unit templates, then install
+for f in deploy/systemd/lobster-price-monitor-scrape.service \
+         deploy/systemd/lobster-price-monitor-scrape.timer \
+         deploy/systemd/lobster-price-monitor-serve.service; do
+  sed "s|LOBSTER_ROOT|${LOBSTER_ROOT}|g" "$f" | sudo tee "/etc/systemd/system/$(basename "$f")"
+done
 sudo systemctl daemon-reload
 sudo systemctl enable --now lobster-price-monitor-scrape.timer
 sudo systemctl enable --now lobster-price-monitor-serve.service
 ```
 
-3. Confirm scheduler on host:
+Confirm scheduler on host:
 
 ```bash
 make verify-production
@@ -120,6 +136,7 @@ make verify-ops
 |------|------|---------|
 | AAA | `make verify` | `make verify-ci` |
 | B+ | `make verify-next` | `make verify-next-ci` |
+| Deploy | `make verify-deploy` | `make verify-deploy-ci` |
 | C (Production) | `make verify-production` | `make verify-production-ci` |
 | D (Ops) | `make verify-ops` | `make verify-ops-ci` |
 
@@ -140,6 +157,7 @@ make verify-ops
 
 | Tool | Purpose |
 |------|---------|
+| `make install-scheduler` | Install dry-run scrape + serve + health schedulers (Phase 2) |
 | `make regen-bplus-fixtures` | Regenerate CI Gate B+ fixture data (maintainer-only) |
 | `scripts/send_test_alert.py` | Send live Telegram test alerts — **not a unit test** |
 

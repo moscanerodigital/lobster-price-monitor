@@ -1,0 +1,15 @@
+[Unit]
+Description=Lobster Price Monitor daily health snapshot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=erik
+WorkingDirectory=LOBSTER_ROOT
+ExecStart=LOBSTER_ROOT/.venv/bin/python scripts/health_check.py --log
+StandardOutput=append:LOBSTER_ROOT/logs/health.stdout.log
+StandardError=append:LOBSTER_ROOT/logs/health.stderr.log
+
+[Install]
+WantedBy=multi-user.target

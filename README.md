@@ -28,7 +28,9 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Mac mini / Chromebox install, scrape,
 bash scripts/install.sh
 bash scripts/dry_run.sh                    # scrape --no-alerts + board.html
 make verify                                # unit tests + AAA gate (auto-seeds CI fixtures if needed)
+make install-scheduler                     # host: dry-run scrape + serve + health schedulers
 make verify-production-ci                  # Gate C smoke (B+ fixtures, skip scheduling)
+make verify-deploy-ci                      # Deploy gate smoke (scheduler checks skipped)
 make verify-ops-ci                         # Gate D smoke (learnings + ops verifier)
 .venv/bin/python scripts/health_check.py
 make serve                                 # http://127.0.0.1:8765/board.html (JSONL data not exposed)
@@ -62,7 +64,7 @@ scripts/
 └── verify_*.py          # AAA / B+ / production / ops gate verifiers
 ```
 
-CI runs `make verify-ci`, `make verify-next-ci`, `make verify-production-ci`, and `make verify-ops-ci` on push via GitHub Actions (`.github/workflows/verify.yml`).
+CI runs `make verify-ci`, `make verify-next-ci`, `make verify-deploy-ci`, `make verify-production-ci`, and `make verify-ops-ci` on push via GitHub Actions (`.github/workflows/verify.yml`).
 
 Per-run pipeline:
 1. For each market, try FB public page (with optional cookies). Fallback chain: Google CSE → DuckDuckGo (specials-aware queries).

@@ -87,25 +87,34 @@ Without FB cookies, six markets remain blocked (DDG captcha-prone). The board st
 
 ## Scheduling
 
-Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Linux or `/Users/you/lobster-price-monitor` on macOS). Canonical unit files:
+Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Linux or `/Users/you/lobster-price-monitor` on macOS). Canonical unit templates use the `LOBSTER_ROOT` placeholder on **both** macOS and Linux — substitute at install time (see `scripts/install_scheduler.sh`).
 
-| Platform | Scrape | Scrape (ops / alerts) | Serve |
-|----------|--------|----------------------|-------|
-| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-scrape.ops.service` + `.ops.timer` | `deploy/systemd/lobster-price-monitor-serve.service` |
-| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` (Label: `…scrape`) | `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (Label: `…scrape.ops`) | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` |
-| cron | `deploy/crontab.example` (`run_scrape.sh`, no alerts) | `LOBSTER_ALERTS=1` + `run_scrape.sh` (see commented ops block) | run serve via systemd/launchd or `@reboot` |
+| Platform | Scrape | Scrape (ops / alerts) | Serve | Health log |
+|----------|--------|----------------------|-------|------------|
+| Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-scrape.ops.service` + `.ops.timer` | `deploy/systemd/lobster-price-monitor-serve.service` | `lobster-price-monitor-health.service` + `.timer` |
+| macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` (Label: `…scrape`) | `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (Label: `…scrape.ops`) | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` | `com.erik.lobster-price-monitor.health.plist` |
+| cron | `deploy/crontab.example` (`run_scrape.sh`, no alerts) | `LOBSTER_ALERTS=1` + `run_scrape.sh` (see commented ops block) | run serve via systemd/launchd or `@reboot` | manual or health unit |
 
-Replace `LOBSTER_ROOT` placeholders in plist files before `launchctl load`. Root-level `deploy/*.service` and `deploy/*.plist` are pointers to the canonical copies above.
+**One-command install (recommended):**
+
+```bash
+bash scripts/install_scheduler.sh --dry-run   # preview
+make install-scheduler                        # install dry-run scrape + serve + health
+make verify-deploy                            # host deploy gate
+```
+
+Root-level `deploy/*.service` and `deploy/*.plist` are pointers to the canonical copies above.
 
 ### macOS launchd
 
-Use the canonical plists in [deploy/launchd/](deploy/launchd/). Replace `LOBSTER_ROOT` placeholders, copy to `~/Library/LaunchAgents/`, then load:
+Use the canonical plists in [deploy/launchd/](deploy/launchd/). `install_scheduler.sh` substitutes `LOBSTER_ROOT` and loads agents automatically. Manual fallback:
 
 | Unit | Label | File |
 |------|-------|------|
 | Dry-run scrape | `com.erik.lobster-price-monitor.scrape` | `com.erik.lobster-price-monitor.scrape.plist` |
 | Ops scrape (alerts) | `com.erik.lobster-price-monitor.scrape.ops` | `com.erik.lobster-price-monitor.scrape.ops.plist` |
 | Board server | `com.erik.lobster-price-monitor.serve` | `com.erik.lobster-price-monitor.serve.plist` |
+| Daily health log | `com.erik.lobster-price-monitor.health` | `com.erik.lobster-price-monitor.health.plist` |
 
 ```bash
 # Example: dry-run scrape + serve
@@ -119,22 +128,7 @@ Gate verifiers expect these exact labels (see `scripts/verify_production_gate.py
 
 ### Linux systemd (Chromebox)
 
-```ini
-[Unit]
-Description=Lobster price monitor scrape
-After=network-online.target
-
-[Service]
-Type=oneshot
-WorkingDirectory=/path/to/lobster-price-monitor
-ExecStart=/path/to/lobster-price-monitor/.venv/bin/python scripts/scrape_markets.py --no-alerts
-User=erik
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Pair with a separate `serve_board.py` unit or reverse proxy if you want always-on HTTP.
+`install_scheduler.sh` substitutes `LOBSTER_ROOT` into unit templates and installs to `/etc/systemd/system/`. Manual fallback example:
 
 ### cron
 

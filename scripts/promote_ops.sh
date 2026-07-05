@@ -100,6 +100,30 @@ promote_macos() {
 }
 
 promote_linux() {
+  local deploy="${LOBSTER_ROOT}/deploy/systemd"
+  local ops_service="${deploy}/lobster-price-monitor-scrape.ops.service"
+  local ops_timer="${deploy}/lobster-price-monitor-scrape.ops.timer"
+
+  for src in "$ops_service" "$ops_timer"; do
+    if [[ ! -f "$src" ]]; then
+      echo "ERROR: ops unit not found at $src" >&2
+      exit 1
+    fi
+    local name
+    name="$(basename "$src")"
+    local tmp
+    tmp="$(mktemp)"
+    if [[ "$DRY_RUN" == true ]]; then
+      echo "[dry-run] sed 's|LOBSTER_ROOT|${LOBSTER_ROOT}|g' $src > /etc/systemd/system/$name"
+      rm -f "$tmp"
+    else
+      sed "s|LOBSTER_ROOT|${LOBSTER_ROOT}|g" "$src" > "$tmp"
+      sudo cp "$tmp" "/etc/systemd/system/$name"
+      rm -f "$tmp"
+    fi
+  done
+
+  run sudo systemctl daemon-reload
   run sudo systemctl disable --now lobster-price-monitor-scrape.timer || true
   run sudo systemctl enable --now lobster-price-monitor-scrape.ops.timer
   echo "Linux ops promotion complete: lobster-price-monitor-scrape.ops.timer"

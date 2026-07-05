@@ -6,11 +6,11 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=erik
-WorkingDirectory=/opt/lobster-price-monitor
+WorkingDirectory=LOBSTER_ROOT
 Environment=LOBSTER_ALERTS=1
-ExecStart=/opt/lobster-price-monitor/scripts/run_scrape.sh
-StandardOutput=append:/opt/lobster-price-monitor/logs/scrape.stdout.log
-StandardError=append:/opt/lobster-price-monitor/logs/scrape.stderr.log
+ExecStart=LOBSTER_ROOT/scripts/run_scrape.sh
+StandardOutput=append:LOBSTER_ROOT/logs/scrape.stdout.log
+StandardError=append:LOBSTER_ROOT/logs/scrape.stderr.log
 
 [Install]
 WantedBy=multi-user.target
