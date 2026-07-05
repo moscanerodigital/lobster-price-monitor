@@ -93,7 +93,9 @@
 
 **Gate C (Production) criteria:** Gate B+ passes · MALPH verify passes · local launchd/systemd scheduler registered & running · scrape duration < 300s · specials section parsed & rendered · Five Islands blocker safely isolated or manual price imported.
 
-**Gate D (Ops) criteria:** Gate C passes on host · `--alerts` enabled on scheduler (or `LOBSTER_ALERTS=1`) · `verify_production_gate.py --skip-scheduling` passes in CI · RALPH Learnings auto-populated from run-log. Host promotion: `make verify-ops` (no skip flags) requires ops unit loaded + Telegram secrets.
+**Gate D (Ops) criteria:** Gate C passes on host · ops scheduler loaded (dry-run unloaded) · `LOBSTER_ALERTS=1` on ops unit · `verify_production_gate.py --skip-scheduling` passes in CI · RALPH Learnings auto-populated from run-log. Host promotion: `make promote-ops` or `bash scripts/promote_ops.sh`; `make verify-ops` (no skip flags) requires ops unit loaded + Telegram secrets.
+
+**Gate D Wave 3 (2026-07-05):** Ops promotion automation (`scripts/promote_ops.sh`), host gate alignment (production gate accepts dry-run or ops scheduler; ops gate requires ops loaded + dry-run unloaded).
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
 
@@ -110,7 +112,7 @@
 | Harbor Fish | soft $14.30 · hard $15.30 | 70 | Web + FB |
 | Five Islands | — (partial) | — | No gated $/lb; see `setup_fb_cookies.md` |
 
-**Ops:** `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
+**Ops:** `make promote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
 
 
 ## Learnings

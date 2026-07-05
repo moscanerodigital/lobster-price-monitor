@@ -4,6 +4,7 @@
 Checks:
 - Gate C passes (verify_production_gate with --skip-scheduling)
 - RALPH Learnings section populated from run-log
+- Ops scheduler loaded and dry-run scheduler unloaded (host only, skippable in CI)
 - Scheduler has alerts enabled (host only, skippable in CI)
 - Latest run-log has alerts_enabled OR scheduler configured for alerts
 """
@@ -20,6 +21,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from verify_production_gate import (
+    DRY_RUN_SCRAPE_LABEL,
+    DRY_RUN_SCRAPE_TIMER,
+    OPS_SCRAPE_LABEL,
+    OPS_SCRAPE_TIMER,
+    _launchctl_labels,
+)
 from state import latest_run_log
 from update_ralph_learnings import DEFAULT_RALPH, learnings_populated
 
@@ -110,6 +118,96 @@ def _scheduler_alerts_enabled() -> bool:
     return True
 
 
+def _ops_unit_has_alerts_flag() -> bool:
+    lobster_root = os.environ.get("LOBSTER_ROOT", str(ROOT))
+
+    if sys.platform == "darwin":
+        ops_path = (
+            Path.home()
+            / "Library/LaunchAgents/com.erik.lobster-price-monitor.scrape.ops.plist"
+        )
+        if not ops_path.exists():
+            ops_path = (
+                Path(lobster_root)
+                / "deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist"
+            )
+        if ops_path.exists():
+            return _text_has_alerts_flag(ops_path.read_text(encoding="utf-8"))
+        return False
+
+    if sys.platform.startswith("linux"):
+        proc = subprocess.run(
+            ["systemctl", "cat", "lobster-price-monitor-scrape.ops"],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0 and _text_has_alerts_flag(proc.stdout):
+            return True
+        ops_service = Path(lobster_root) / "deploy/systemd/lobster-price-monitor-scrape.ops.service"
+        if ops_service.exists():
+            return _text_has_alerts_flag(ops_service.read_text(encoding="utf-8"))
+        return False
+
+    return True
+
+
+def check_ops_scheduler_loaded(*, skip_alerts_check: bool) -> None:
+    if skip_alerts_check:
+        print("  ! ops scheduler check skipped (CI mode)")
+        return
+
+    if sys.platform == "darwin":
+        proc = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+        )
+        labels = _launchctl_labels(proc.stdout)
+        if OPS_SCRAPE_LABEL not in labels:
+            _fail(
+                f"ops launchd agent '{OPS_SCRAPE_LABEL}' not loaded — "
+                "run scripts/promote_ops.sh"
+            )
+        if DRY_RUN_SCRAPE_LABEL in labels:
+            _fail(
+                f"dry-run launchd agent '{DRY_RUN_SCRAPE_LABEL}' still loaded — "
+                "unload before ops promotion"
+            )
+        if not _ops_unit_has_alerts_flag():
+            _fail("ops launchd plist lacks LOBSTER_ALERTS=1 or --alerts")
+        print(f"  ✓ ops launchd agent loaded ({OPS_SCRAPE_LABEL})")
+
+    elif sys.platform.startswith("linux"):
+        ops_proc = subprocess.run(
+            ["systemctl", "is-enabled", "lobster-price-monitor-scrape.ops.timer"],
+            capture_output=True,
+            text=True,
+        )
+        ops_enabled = ops_proc.returncode == 0 and "enabled" in ops_proc.stdout
+        if not ops_enabled:
+            _fail(
+                f"ops systemd timer '{OPS_SCRAPE_TIMER}' not enabled — "
+                "run scripts/promote_ops.sh"
+            )
+
+        dry_proc = subprocess.run(
+            ["systemctl", "is-enabled", "lobster-price-monitor-scrape.timer"],
+            capture_output=True,
+            text=True,
+        )
+        if dry_proc.returncode == 0 and "enabled" in dry_proc.stdout:
+            _fail(
+                f"dry-run systemd timer '{DRY_RUN_SCRAPE_TIMER}' still enabled — "
+                "disable before ops promotion"
+            )
+        if not _ops_unit_has_alerts_flag():
+            _fail("ops systemd unit lacks LOBSTER_ALERTS=1 or --alerts")
+        print(f"  ✓ ops systemd timer enabled ({OPS_SCRAPE_TIMER})")
+
+    else:
+        print("  ! Unknown OS — skipping ops scheduler verification")
+
+
 def check_alerts_enabled(*, skip_alerts_check: bool) -> None:
     if skip_alerts_check:
         print("  ! alerts check skipped (CI mode)")
@@ -159,6 +257,10 @@ def main() -> int:
     steps = [
         ("gate_c", lambda: check_gate_c(skip_scheduling=args.skip_scheduling)),
         ("ralph_learnings", lambda: check_ralph_learnings(ralph_path=args.ralph_path)),
+        (
+            "ops_scheduler_loaded",
+            lambda: check_ops_scheduler_loaded(skip_alerts_check=args.skip_alerts_check),
+        ),
         (
             "alerts_enabled",
             lambda: check_alerts_enabled(skip_alerts_check=args.skip_alerts_check),

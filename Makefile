@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-ops
+.PHONY: install scrape serve health verify test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-ops promote-ops
 
 install:
 	python3 -m venv $(VENV)
@@ -42,6 +42,7 @@ verify:
 	$(PYTHON) scripts/test_update_ralph_learnings.py
 	$(PYTHON) scripts/test_verify_ops_ci.py
 	$(PYTHON) scripts/test_deploy_units.py
+	$(PYTHON) scripts/test_scheduling_gates.py
 	$(PYTHON) scripts/verify_aaa_gate.py
 
 verify-next: verify
@@ -52,6 +53,9 @@ verify-production: verify-next
 
 verify-ops: verify-production
 	$(PYTHON) scripts/verify_ops_gate.py
+
+promote-ops:
+	bash scripts/promote_ops.sh
 
 test: verify
 

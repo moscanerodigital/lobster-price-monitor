@@ -183,7 +183,28 @@ Run it from the root directory:
 
 Default scrape paths use `--no-alerts`. To promote to live ops alerts:
 
-### Promote to ops checklist
+### One-command promotion (recommended)
+
+```bash
+# Preview planned actions without changing the host scheduler
+bash scripts/promote_ops.sh --dry-run
+
+# Promote: swap dry-run scheduler → ops, confirm scrape, verify
+make promote-ops
+# or: bash scripts/promote_ops.sh
+```
+
+`promote_ops.sh` will:
+
+1. Verify Telegram token at `~/.openclaw/secrets/telegram/herb.token` and `.venv` exist.
+2. **Unload/disable** the dry-run scheduler.
+3. **Load/enable** the ops scheduler (`LOBSTER_ALERTS=1`).
+4. Run one confirmation scrape with alerts enabled.
+5. Run `make verify-ops` (requires ops unit loaded; dry-run must be unloaded).
+
+Set `LOBSTER_ROOT` if the install path differs from the repo root (e.g. `/opt/lobster-price-monitor`).
+
+### Manual promotion (fallback)
 
 1. Save the Telegram bot token to `~/.openclaw/secrets/telegram/herb.token` (and chat ID to `~/.openclaw/secrets/telegram/chat_id` or env `LOBSTER_TELEGRAM_CHAT_ID`).
 2. **Unload** the dry-run scheduler:
@@ -194,6 +215,8 @@ Default scrape paths use `--no-alerts`. To promote to live ops alerts:
    - Linux: enable `lobster-price-monitor-scrape.ops.timer` (pairs with `lobster-price-monitor-scrape.ops.service`)
 4. Run one manual scrape to confirm alerts path: `LOBSTER_ALERTS=1 scripts/run_scrape.sh`
 5. Verify ops readiness: `make verify-ops` (host) or `make verify-ops-ci` (CI-safe smoke).
+
+`make verify-production` accepts either dry-run or ops scrape scheduler on a promoted host. `make verify-ops` requires the **ops** scheduler loaded and dry-run **unloaded**.
 
 Alternative enable paths (without swapping units):
 

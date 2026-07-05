@@ -54,39 +54,60 @@ def check_malph_completion() -> None:
         _fail(f"MALPH completion checks failed:\n{proc.stdout}\n{proc.stderr}")
 
 
+DRY_RUN_SCRAPE_LABEL = "com.erik.lobster-price-monitor.scrape"
+OPS_SCRAPE_LABEL = "com.erik.lobster-price-monitor.scrape.ops"
+SERVE_LABEL = "com.erik.lobster-price-monitor.serve"
+DRY_RUN_SCRAPE_TIMER = "lobster-price-monitor-scrape.timer"
+OPS_SCRAPE_TIMER = "lobster-price-monitor-scrape.ops.timer"
+
+
+def _launchctl_labels(output: str) -> set[str]:
+    labels: set[str] = set()
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) >= 3:
+            labels.add(parts[2])
+    return labels
+
+
+def _launchctl_pid(output: str, label: str) -> int | None:
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[2] == label:
+            if parts[0] != "-":
+                return int(parts[0])
+    return None
+
+
 def check_scheduling() -> None:
     if sys.platform == "darwin":
-        # Check launchd
         proc = subprocess.run(
             ["launchctl", "list"],
             capture_output=True,
             text=True,
         )
         output = proc.stdout
-        scrape_found = False
-        serve_found = False
-        serve_running = False
-
-        for line in output.splitlines():
-            parts = line.split()
-            if len(parts) >= 3:
-                label = parts[2]
-                if label == "com.erik.lobster-price-monitor.scrape":
-                    scrape_found = True
-                elif label == "com.erik.lobster-price-monitor.serve":
-                    serve_found = True
-                    if parts[0] != "-" and int(parts[0]) > 0:
-                        serve_running = True
+        labels = _launchctl_labels(output)
+        scrape_found = DRY_RUN_SCRAPE_LABEL in labels or OPS_SCRAPE_LABEL in labels
+        serve_found = SERVE_LABEL in labels
+        serve_pid = _launchctl_pid(output, SERVE_LABEL)
 
         if not scrape_found:
-            _fail("launchd agent 'com.erik.lobster-price-monitor.scrape' not loaded")
+            _fail(
+                "launchd scrape agent not loaded "
+                f"(expected '{DRY_RUN_SCRAPE_LABEL}' or '{OPS_SCRAPE_LABEL}')"
+            )
+        if scrape_found:
+            if OPS_SCRAPE_LABEL in labels:
+                print(f"  ✓ launchd ops scrape agent loaded ({OPS_SCRAPE_LABEL})")
+            else:
+                print(f"  ✓ launchd dry-run scrape agent loaded ({DRY_RUN_SCRAPE_LABEL})")
         if not serve_found:
-            _fail("launchd agent 'com.erik.lobster-price-monitor.serve' not loaded")
-        if not serve_running:
-            _fail("launchd agent 'com.erik.lobster-price-monitor.serve' is loaded but not running")
+            _fail(f"launchd agent '{SERVE_LABEL}' not loaded")
+        if serve_pid is None or serve_pid <= 0:
+            _fail(f"launchd agent '{SERVE_LABEL}' is loaded but not running")
 
     elif sys.platform.startswith("linux"):
-        # Check systemd
         proc = subprocess.run(
             ["systemctl", "is-active", "lobster-price-monitor-serve"],
             capture_output=True,
@@ -100,8 +121,18 @@ def check_scheduling() -> None:
             capture_output=True,
             text=True,
         )
-        if "lobster-price-monitor-scrape" not in proc2.stdout:
-            _fail("systemd timer 'lobster-price-monitor-scrape' not found")
+        timers = proc2.stdout
+        dry_timer = DRY_RUN_SCRAPE_TIMER in timers
+        ops_timer = OPS_SCRAPE_TIMER in timers
+        if not dry_timer and not ops_timer:
+            _fail(
+                "systemd scrape timer not found "
+                f"(expected '{DRY_RUN_SCRAPE_TIMER}' or '{OPS_SCRAPE_TIMER}')"
+            )
+        if ops_timer:
+            print(f"  ✓ systemd ops scrape timer loaded ({OPS_SCRAPE_TIMER})")
+        else:
+            print(f"  ✓ systemd dry-run scrape timer loaded ({DRY_RUN_SCRAPE_TIMER})")
     else:
         print("  ! Unknown OS — skipping scheduling verification")
 
