@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from quality_gate import gate_rows, is_specials_post, score_row, source_quality_score
-from parse_prices import is_specials_post as parse_is_specials_post
+from quality_gate import gate_rows, score_row, source_quality_score
+from parse_prices import is_specials_post
 
 FRESH_TS = datetime.now(timezone.utc).isoformat()
 STALE_TS = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
@@ -59,9 +59,9 @@ def test_lobster_tier_passes_at_60():
     print("  ✓ lobster tier passes at threshold 60")
 
 
-def test_is_specials_post_reexport():
-    assert parse_is_specials_post("halibut $18.99/lb") is True
-    assert parse_is_specials_post("chicks $8.75/lb") is False
+def test_is_specials_post():
+    assert is_specials_post("halibut $18.99/lb") is True
+    assert is_specials_post("chicks $8.75/lb") is False
     print("  ✓ is_specials_post AC4b logic")
 
 
@@ -72,7 +72,7 @@ def main() -> int:
         test_gate_quarantines_stale_search,
         test_gate_quarantines_out_of_band,
         test_lobster_tier_passes_at_60,
-        test_is_specials_post_reexport,
+        test_is_specials_post,
     ]
     failures = 0
     for t in tests:
