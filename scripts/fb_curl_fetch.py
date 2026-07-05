@@ -3,17 +3,18 @@
 facebook-scraper often returns 0 posts on modern FB HTML; this path uses the
 logged-in session (cookies file or Chrome) and parses embedded JSON post text.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
-import os
+import logging
 import re
 from datetime import datetime, timezone
-from pathlib import Path
+from secrets import load_fb_cookies
 from urllib.parse import quote_plus
 
-FB_COOKIES_FILE = Path(os.path.expanduser("~/.openclaw/secrets/facebook-cookies.json"))
+logger = logging.getLogger(__name__)
 
 _TEXT_RE = re.compile(r'"text":"((?:\\.|[^"\\])*)"')
 _LOBSTER_PRICE_HINT = re.compile(
@@ -23,8 +24,22 @@ _LOBSTER_PRICE_HINT = re.compile(
 
 # Cross-market bleed tokens — reject posts clearly from another watchlist market.
 _OTHER_MARKET_TOKENS: dict[str, tuple[str, ...]] = {
-    "Ancient Mariner Lobster Co.": ("two tides", "cheapmainelobster", "pinetree", "harbor fish", "free range", "sopo", "five islands"),
-    "Two Tides Seafood": ("ancient mariner", "amlobsterco", "854-8444", "cheapmainelobster", "pinetree"),
+    "Ancient Mariner Lobster Co.": (
+        "two tides",
+        "cheapmainelobster",
+        "pinetree",
+        "harbor fish",
+        "free range",
+        "sopo",
+        "five islands",
+    ),
+    "Two Tides Seafood": (
+        "ancient mariner",
+        "amlobsterco",
+        "854-8444",
+        "cheapmainelobster",
+        "pinetree",
+    ),
     "Scarborough Fish & Lobster": ("ancient mariner", "two tides", "854-8444"),
     "Free Range Fish & Lobster": ("ancient mariner", "two tides seafood"),
     "SoPo Seafood Market & Raw Bar": ("ancient mariner", "two tides seafood"),
@@ -36,33 +51,7 @@ _OTHER_MARKET_TOKENS: dict[str, tuple[str, ...]] = {
 
 
 def _load_cookie_dict() -> dict[str, str] | None:
-    if FB_COOKIES_FILE.exists():
-        try:
-            data = json.loads(FB_COOKIES_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                jar = {
-                    c["name"]: c["value"]
-                    for c in data
-                    if isinstance(c, dict) and c.get("name") and "value" in c
-                }
-                if "c_user" in jar and "xs" in jar:
-                    return jar
-            if isinstance(data, dict):
-                if "cookies" in data and isinstance(data["cookies"], dict):
-                    return data["cookies"]
-                if "c_user" in data and "xs" in data:
-                    return {k: str(v) for k, v in data.items()}
-        except (json.JSONDecodeError, OSError):
-            pass
-    try:
-        import browser_cookie3
-
-        jar = {c.name: c.value for c in browser_cookie3.chrome(domain_name=".facebook.com")}
-        if "c_user" in jar and "xs" in jar:
-            return jar
-    except Exception:
-        pass
-    return None
+    return load_fb_cookies()
 
 
 def _extract_post_texts(html: str) -> list[str]:
@@ -108,10 +97,7 @@ def _search_urls(market_name: str, fb_handle: str) -> list[str]:
         f'"{market_name}" lobster $/lb',
         f"site:facebook.com {fb_handle} live lobster",
     ]
-    return [
-        "https://www.facebook.com/search/posts/?q=" + quote_plus(q)
-        for q in queries
-    ]
+    return ["https://www.facebook.com/search/posts/?q=" + quote_plus(q) for q in queries]
 
 
 def _is_spam_price_post(text: str) -> bool:
@@ -142,7 +128,8 @@ def _text_matches_market(text: str, market_name: str, fb_handle: str) -> bool:
         return True
     # Price-menu posts on the market's own page (not search).
     if _LOBSTER_PRICE_HINT.search(text) and any(
-        kw in lower for kw in ("menu price", "updated price", "current menu", "hardshell:", "softshell:")
+        kw in lower
+        for kw in ("menu price", "updated price", "current menu", "hardshell:", "softshell:")
     ):
         return True
     return False
@@ -163,7 +150,12 @@ def _search_text_matches_market(text: str, market_name: str, fb_handle: str) -> 
         "Scarborough Fish & Lobster": ("scarborough fish", "cheapmainelobster", "697 us-1"),
         "Free Range Fish & Lobster": ("free range", "commercial st", "freerangefish"),
         "SoPo Seafood Market & Raw Bar": ("sopo", "south portland", "171 ocean", "soposeafood"),
-        "Five Islands Lobster Co.": ("five islands", "georgetown", "fiveislands", "five islands lobster"),
+        "Five Islands Lobster Co.": (
+            "five islands",
+            "georgetown",
+            "fiveislands",
+            "five islands lobster",
+        ),
         "Pine Tree Seafood & Produce": ("pine tree", "pinetree"),
         "Harbor Fish Market (Lobster)": ("harbor fish", "harborfish"),
         "Harbor Fish Market (Oysters)": ("harbor fish", "harborfish"),
@@ -211,14 +203,16 @@ def fetch_fb_posts(
             return
         seen_text.add(key)
         post_id = "fbcurl-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-        results.append({
-            "market": market_name,
-            "post_id": post_id,
-            "timestamp": observed,
-            "text": text,
-            "url": url,
-            "source": source,
-        })
+        results.append(
+            {
+                "market": market_name,
+                "post_id": post_id,
+                "timestamp": observed,
+                "text": text,
+                "url": url,
+                "source": source,
+            }
+        )
 
     for url in _page_urls(fb_handle)[:3]:
         if len(results) >= max_posts:
@@ -228,7 +222,9 @@ def fetch_fb_posts(
             if resp.status_code != 200:
                 continue
             for text in _extract_post_texts(resp.text):
-                if _post_has_lobster_price(text) or _text_matches_market(text, market_name, fb_handle):
+                if _post_has_lobster_price(text) or _text_matches_market(
+                    text, market_name, fb_handle
+                ):
                     _add(text, url, "facebook")
                 if len(results) >= max_posts:
                     break

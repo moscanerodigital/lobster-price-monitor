@@ -1,4 +1,5 @@
 """Clean, scannable chalkboard HTML — mobile-first price list."""
+
 from __future__ import annotations
 
 import html
@@ -19,16 +20,16 @@ def _html_price_row(item: dict, *, section_key: str) -> str:
     if section_key == "lobster":
         if item.get("is_consolidated"):
             left_primary = html.escape(item.get("row_primary", item.get("market_short", "")))
-            left_secondary = html.escape(
-                item.get("row_secondary") or raw_subtext or ""
-            )
+            left_secondary = html.escape(item.get("row_secondary") or raw_subtext or "")
             subtext = ""
         else:
             left_primary = market
             left_secondary = label
             subtext = html.escape(raw_subtext)
     elif section_key == "special":
-        left_primary = html.escape(item.get("row_primary") or f"{item.get('market_short', '')} — {item.get('label', '')}")
+        left_primary = html.escape(
+            item.get("row_primary") or f"{item.get('market_short', '')} — {item.get('label', '')}"
+        )
         left_secondary = ""
         subtext = html.escape(raw_subtext)
     else:
@@ -50,14 +51,14 @@ def _html_price_row(item: dict, *, section_key: str) -> str:
         f'<li class="{row_cls}">'
         f'<div class="row-left">'
         f'<span class="row-primary">{left_primary}</span>'
-        f'{secondary_html}'
-        f'{sub_html}'
-        f'</div>'
+        f"{secondary_html}"
+        f"{sub_html}"
+        f"</div>"
         f'<div class="{price_cls}">'
         f'<span class="{amount_cls}">{amount}</span>'
         f'<span class="price-unit">{unit}</span>'
-        f'</div>'
-        f'</li>'
+        f"</div>"
+        f"</li>"
     )
 
 
@@ -76,7 +77,7 @@ def _html_blocked_details(coverage: list[dict]) -> str:
             f'<li class="blocked-item {tag}">'
             f'<span class="blocked-name">{name}</span>'
             f'<span class="blocked-reason">{reason}</span>'
-            f'</li>'
+            f"</li>"
         )
 
     return f'<ul class="blocked-list">{"".join(rows)}</ul>'
@@ -85,8 +86,7 @@ def _html_blocked_details(coverage: list[dict]) -> str:
 def render_chalk_html(board: dict) -> str:
     is_demo = board.get("is_demo", False)
     demo_banner = (
-        '<p class="demo-banner">Demo board — run scrape for live prices</p>'
-        if is_demo else ""
+        '<p class="demo-banner">Demo board — run scrape for live prices</p>' if is_demo else ""
     )
 
     sections_html: list[str] = []
@@ -102,27 +102,31 @@ def render_chalk_html(board: dict) -> str:
         sections_html.append(
             f'<section class="board-section section-{section_key}">'
             f'<h2 class="section-heading">{emoji} {html.escape(heading)}</h2>'
-            f'{body}'
-            f'</section>'
+            f"{body}"
+            f"</section>"
         )
 
     trends_html = ""
     trends = board.get("trends", {})
     if trends and trends.get("labels"):
         trends_html = (
-            f'<section class="board-section section-trends">'
-            f'<h2 class="section-heading">📈 Price Trends</h2>'
-            f'<div class="chart-container" style="position: relative; height: 180px; width: 100%; margin-top: 0.5rem; border-bottom: 1px solid rgba(242,234,216,.08); padding-bottom: 1.5rem;">'
-            f'<canvas id="trendsChart"></canvas>'
-            f'</div>'
-            f'</section>'
+            '<section class="board-section section-trends">'
+            '<h2 class="section-heading">📈 Price Trends</h2>'
+            '<div class="chart-container" style="position: relative; height: 180px; width: 100%; margin-top: 0.5rem; border-bottom: 1px solid rgba(242,234,216,.08); padding-bottom: 1.5rem;">'
+            '<canvas id="trendsChart"></canvas>'
+            "</div>"
+            "</section>"
         )
         sections_html.append(trends_html)
 
     coverage = board.get("market_coverage") or []
     live_n = board.get("live_market_count", sum(1 for c in coverage if c["status"] == "live"))
-    blocked_n = board.get("blocked_market_count", sum(1 for c in coverage if c["status"] == "blocked"))
-    partial_n = board.get("partial_market_count", sum(1 for c in coverage if c["status"] == "partial"))
+    blocked_n = board.get(
+        "blocked_market_count", sum(1 for c in coverage if c["status"] == "blocked")
+    )
+    partial_n = board.get(
+        "partial_market_count", sum(1 for c in coverage if c["status"] == "partial")
+    )
     unavailable_n = blocked_n + partial_n
     summary = board.get("coverage_summary") or f"{live_n} live · {unavailable_n} awaiting feed"
     updated = html.escape(_format_observed(board.get("updated_at", "")))
@@ -132,9 +136,9 @@ def render_chalk_html(board: dict) -> str:
     if blocked_details:
         footer_extra = (
             f'<details class="markets-details">'
-            f'<summary>{html.escape(summary)}</summary>'
-            f'{blocked_details}'
-            f'</details>'
+            f"<summary>{html.escape(summary)}</summary>"
+            f"{blocked_details}"
+            f"</details>"
         )
     else:
         footer_extra = f'<p class="footer-summary">{html.escape(summary)}</p>'
@@ -463,13 +467,13 @@ def render_chalk_html(board: dict) -> str:
 </html>"""
 
     script_content = f"""
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
     (function() {{
       const ctx = document.getElementById('trendsChart');
       if (!ctx) return;
       const trends = {json.dumps(board.get("trends", {}))};
-      
+
       new Chart(ctx, {{
         type: 'line',
         data: {{

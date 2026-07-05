@@ -1,29 +1,49 @@
 #!/usr/bin/env python3
 """Manual price import tool — append custom price to prices.jsonl and re-render board."""
+
 from __future__ import annotations
+
 import argparse
-from datetime import datetime, timezone
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from board_render import write_html_board
 from state import PARSER_VERSION, append_jsonl
-from board_render import write_html_board, short_market
 
 
 def slugify(name: str) -> str:
-    return name.lower().replace("co.", "").replace("market", "").replace("&", "and").strip().replace(" ", "-")
+    return (
+        name.lower()
+        .replace("co.", "")
+        .replace("market", "")
+        .replace("&", "and")
+        .strip()
+        .replace(" ", "-")
+    )
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Manually import a price row into the seafood board")
+    parser = argparse.ArgumentParser(
+        description="Manually import a price row into the seafood board"
+    )
     parser.add_argument("--market", default="Five Islands Lobster Co.", help="Market name")
-    parser.add_argument("--tier", default="soft_shell", help="Price tier (e.g. chicks, soft_shell, hard_shell, halibut, etc.)")
+    parser.add_argument(
+        "--tier",
+        default="soft_shell",
+        help="Price tier (e.g. chicks, soft_shell, hard_shell, halibut, etc.)",
+    )
     parser.add_argument("--price", type=float, required=True, help="Price amount (e.g. 10.99)")
     parser.add_argument("--unit", default="lb", choices=["lb", "doz", "ea"], help="Price unit")
-    parser.add_argument("--kind", default="lobster_tier", choices=["lobster_tier", "oyster_tier", "special"], help="Kind of tier")
+    parser.add_argument(
+        "--kind",
+        default="lobster_tier",
+        choices=["lobster_tier", "oyster_tier", "special"],
+        help="Kind of tier",
+    )
     args = parser.parse_args()
 
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -56,7 +76,10 @@ def main() -> int:
     }
 
     append_jsonl("prices.jsonl", row)
-    print(f"Imported manual price: {args.market} — {args.tier} at ${args.price:.2f}/{args.unit}", flush=True)
+    print(
+        f"Imported manual price: {args.market} — {args.tier} at ${args.price:.2f}/{args.unit}",
+        flush=True,
+    )
 
     try:
         board_path = write_html_board()

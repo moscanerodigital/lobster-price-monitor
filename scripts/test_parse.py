@@ -1,6 +1,8 @@
 """Unit tests for parse_prices.parse_post() and is_specials_post()."""
+
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from parse_prices import is_specials_post, parse_post

@@ -1,4 +1,5 @@
 """Configured seafood markets for scrape and board display."""
+
 from __future__ import annotations
 
 MARKETS: list[dict] = [

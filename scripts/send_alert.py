@@ -1,10 +1,10 @@
 """Telegram send — dedupe-aware. Reads token from secrets file at runtime."""
+
 from __future__ import annotations
+
 import json
-import os
-import urllib.request
 import urllib.parse
-from pathlib import Path
+import urllib.request
 
 try:
     from . import state
@@ -13,9 +13,33 @@ except ImportError:
     import state
     from board_render import format_price, label_for, render_telegram_board
 
-SECRETS = Path(os.path.expanduser("~/.openclaw/secrets/telegram/herb.token"))
-ERIK_CHAT_ID = "6700324874"
+from secrets import TELEGRAM_TOKEN_FILE as SECRETS
+from secrets import get_telegram_chat_id
+
 API = "https://api.telegram.org/bot{token}/{method}"
+
+_alert_seen_cache: set[str] | None = None
+
+
+def _get_chat_id() -> str:
+    return get_telegram_chat_id()
+
+
+def begin_alert_run() -> None:
+    """Load alert dedupe keys once per scrape run."""
+    global _alert_seen_cache
+    _alert_seen_cache = state.seen_alert_keys()
+
+
+def _alert_seen() -> set[str]:
+    global _alert_seen_cache
+    if _alert_seen_cache is None:
+        _alert_seen_cache = state.seen_alert_keys()
+    return _alert_seen_cache
+
+
+def _mark_alert_sent(key: str) -> None:
+    _alert_seen().add(key)
 
 
 def _get_token() -> str:
@@ -37,17 +61,22 @@ def _post(method: str, payload: dict) -> tuple[int, dict]:
 
 
 def send_telegram(text: str) -> bool:
-    status, body = _post("sendMessage", {"chat_id": ERIK_CHAT_ID, "text": text})
+    status, body = _post("sendMessage", {"chat_id": _get_chat_id(), "text": text})
     return status == 200 and body.get("ok")
 
 
 def alert_lobster_drop(
-    market: str, tier: str, price: float, post_url: str,
-    observed_at: str, threshold: float, *, confidence: int = 100,
+    market: str,
+    tier: str,
+    price: float,
+    post_url: str,
+    observed_at: str,
+    threshold: float,
+    *,
+    confidence: int = 100,
 ) -> bool:
     key = f"lobster|{market}|{tier}|{price:.2f}"
-    seen = state.seen_alert_keys()
-    if key in seen:
+    if key in _alert_seen():
         return False
     text = (
         f"🦞 *LOBSTER DROP* — {market}\n"
@@ -59,22 +88,38 @@ def alert_lobster_drop(
         f"{post_url}"
     )
     if send_telegram(text):
-        state.append_jsonl("alerts_sent.jsonl", {
-            "key": key, "kind": "lobster_tier", "market": market,
-            "tier": tier, "price": price, "confidence": confidence,
-            "post_url": post_url, "observed_at": observed_at, "ts": observed_at,
-        })
+        state.append_jsonl(
+            "alerts_sent.jsonl",
+            {
+                "key": key,
+                "kind": "lobster_tier",
+                "market": market,
+                "tier": tier,
+                "price": price,
+                "confidence": confidence,
+                "post_url": post_url,
+                "observed_at": observed_at,
+                "ts": observed_at,
+            },
+        )
+        _mark_alert_sent(key)
         return True
     return False
 
 
 def alert_oyster_drop(
-    market: str, grade: str, price: float, post_url: str,
-    observed_at: str, threshold: float, unit: str = "doz", *, confidence: int = 100,
+    market: str,
+    grade: str,
+    price: float,
+    post_url: str,
+    observed_at: str,
+    threshold: float,
+    unit: str = "doz",
+    *,
+    confidence: int = 100,
 ) -> bool:
     key = f"oyster|{market}|{grade}|{price:.2f}|{unit}"
-    seen = state.seen_alert_keys()
-    if key in seen:
+    if key in _alert_seen():
         return False
     text = (
         f"🦪 *OYSTER DROP* — {market}\n"
@@ -86,23 +131,24 @@ def alert_oyster_drop(
         f"{post_url}"
     )
     if send_telegram(text):
-        state.append_jsonl("alerts_sent.jsonl", {
-            "key": key, "kind": "oyster_tier", "market": market,
-            "tier": grade, "price": price, "unit": unit, "confidence": confidence,
-            "post_url": post_url, "observed_at": observed_at, "ts": observed_at,
-        })
+        state.append_jsonl(
+            "alerts_sent.jsonl",
+            {
+                "key": key,
+                "kind": "oyster_tier",
+                "market": market,
+                "tier": grade,
+                "price": price,
+                "unit": unit,
+                "confidence": confidence,
+                "post_url": post_url,
+                "observed_at": observed_at,
+                "ts": observed_at,
+            },
+        )
+        _mark_alert_sent(key)
         return True
     return False
-
-
-def alert_special(
-    market: str, post_url: str, snippet: str, observed_at: str,
-    *, special_items: list[dict] | None = None,
-) -> bool:
-    """Legacy wrapper — delegates to alert_specials_post."""
-    return alert_specials_post(
-        market, post_url, snippet, observed_at, special_items=special_items or [],
-    )
 
 
 def alert_specials_post(
@@ -117,8 +163,7 @@ def alert_specials_post(
     """AC4b-compliant specials alert with structured item list. Dedupes by (market|post_id)."""
     post_id = post_url.rstrip("/").split("/")[-1] if post_url else "unknown"
     key = f"special|{market}|{post_id}"
-    seen = state.seen_alert_keys()
-    if key in seen:
+    if key in _alert_seen():
         return False
 
     board_block = render_telegram_board(
@@ -138,12 +183,21 @@ def alert_specials_post(
     text = f"{board_block}\nseen: {observed_at}\n{post_url}"
 
     if send_telegram(text):
-        state.append_jsonl("alerts_sent.jsonl", {
-            "key": key, "kind": "special", "market": market,
-            "post_id": post_id, "post_url": post_url, "source": source,
-            "special_items": special_items,
-            "observed_at": observed_at, "ts": observed_at,
-        })
+        state.append_jsonl(
+            "alerts_sent.jsonl",
+            {
+                "key": key,
+                "kind": "special",
+                "market": market,
+                "post_id": post_id,
+                "post_url": post_url,
+                "source": source,
+                "special_items": special_items,
+                "observed_at": observed_at,
+                "ts": observed_at,
+            },
+        )
+        _mark_alert_sent(key)
         return True
     return False
 
@@ -157,10 +211,12 @@ def alert_web_specials(
     """Alert when web catalog specials change (new items vs last snapshot)."""
     if not new_items:
         return False
-    sig = "|".join(f"{i['key']}:{i['price']:.2f}:{i['unit']}" for i in sorted(new_items, key=lambda x: x["key"]))
+    sig = "|".join(
+        f"{i['key']}:{i['price']:.2f}:{i['unit']}"
+        for i in sorted(new_items, key=lambda x: x["key"])
+    )
     key = f"web_special|{market}|{sig}"
-    seen = state.seen_alert_keys()
-    if key in seen:
+    if key in _alert_seen():
         return False
     board_block = render_telegram_board(
         market,
@@ -178,10 +234,19 @@ def alert_web_specials(
     )
     text = f"{board_block}\nseen: {observed_at}\n{post_url}"
     if send_telegram(text):
-        state.append_jsonl("alerts_sent.jsonl", {
-            "key": key, "kind": "special", "market": market,
-            "post_url": post_url, "source": "web",
-            "special_items": new_items, "observed_at": observed_at, "ts": observed_at,
-        })
+        state.append_jsonl(
+            "alerts_sent.jsonl",
+            {
+                "key": key,
+                "kind": "special",
+                "market": market,
+                "post_url": post_url,
+                "source": "web",
+                "special_items": new_items,
+                "observed_at": observed_at,
+                "ts": observed_at,
+            },
+        )
+        _mark_alert_sent(key)
         return True
     return False

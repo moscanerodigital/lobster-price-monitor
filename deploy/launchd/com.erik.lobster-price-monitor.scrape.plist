@@ -8,11 +8,11 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/scripts/run_scrape.sh</string>
+    <string>LOBSTER_ROOT/scripts/run_scrape.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor</string>
+  <string>LOBSTER_ROOT</string>
 
   <!-- Weekday scrape: 07:00, 11:00, 15:00, 19:00 local -->
   <key>StartCalendarInterval</key>
@@ -36,9 +36,9 @@
   </array>
 
   <key>StandardOutPath</key>
-  <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/logs/scrape.log</string>
+  <string>LOBSTER_ROOT/logs/scrape.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/erik-darci/Documents/Codex/2026-07-04/pu/work/lobster-price-monitor/logs/scrape.err</string>
+  <string>LOBSTER_ROOT/logs/scrape.err</string>
 
   <key>RunAtLoad</key>
   <false/>

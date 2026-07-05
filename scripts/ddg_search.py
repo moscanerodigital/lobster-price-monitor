@@ -1,17 +1,15 @@
 """DuckDuckGo HTML search fallback for FB-blocked markets."""
+
 from __future__ import annotations
+
 import hashlib
 import re
 import urllib.parse
 import urllib.request
 
-DDG_HTML_URL = "https://html.duckduckgo.com/html/"
+from search_queries import SEARCH_QUERIES
 
-SEARCH_QUERIES = [
-    "site:facebook.com/{handle} lobster price",
-    "site:facebook.com/{handle} specials halibut scallops",
-    "site:facebook.com/{handle} daily special",
-]
+DDG_HTML_URL = "https://html.duckduckgo.com/html/"
 
 
 def _post_form(query: str) -> bytes:
@@ -45,15 +43,17 @@ def _parse_ddg_html(html: str, market_name: str, *, num: int) -> list[dict]:
             snippet = re.sub(r"<[^>]+>", "", sn.group(1)).strip()
         text = f"{title}. {snippet}" if snippet else title
         post_id = "ddg-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-        results.append({
-            "market": market_name,
-            "post_id": post_id,
-            "timestamp": "",
-            "text": text,
-            "url": url,
-            "source": "duckduckgo",
-            "source_quality": 0.5,
-        })
+        results.append(
+            {
+                "market": market_name,
+                "post_id": post_id,
+                "timestamp": "",
+                "text": text,
+                "url": url,
+                "source": "duckduckgo",
+                "source_quality": 0.5,
+            }
+        )
         if len(results) >= num:
             break
     return results

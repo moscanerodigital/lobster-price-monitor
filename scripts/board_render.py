@@ -1,13 +1,14 @@
 """Seafood board rendering — chalkboard-style terminal, HTML, and Telegram."""
+
 from __future__ import annotations
 
-import html
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from market_names import short_market
 from markets import MARKETS
-from state import read_json, read_jsonl, DATA_DIR
+from state import DATA_DIR, read_json, read_jsonl
 
 _LOBSTER_SIZE_ORDER = {
     "chicks_soft_shell": 0,
@@ -78,21 +79,16 @@ _TAG_TILTS = (-2.1, 0.8, 2.4, -1.6, 2.9, -0.5, 1.7, -2.8, 0.3, 1.1, -1.9, 2.2)
 _LETTER_SPACINGS = ("-0.02em", "0.01em", "0.04em", "-0.01em", "0.06em", "0em", "0.03em")
 _PRICE_SCALES = (1.0, 1.12, 0.9, 1.18, 0.88, 1.05, 0.95, 1.15)
 _SCATTER_OFFSETS = (
-    (0, 0), (12, 4), (-6, 18), (20, -8), (-14, 28), (8, 12), (-20, 6), (16, 22),
+    (0, 0),
+    (12, 4),
+    (-6, 18),
+    (20, -8),
+    (-14, 28),
+    (8, 12),
+    (-20, 6),
+    (16, 22),
 )
 _CHALK_FONTS = ("Caveat", "Permanent Marker", "Gloria Hallelujah", "Indie Flower")
-
-_MARKET_SHORTCUTS = {
-    "Ancient Mariner Lobster Co.": "Ancient Mariner",
-    "Pine Tree Seafood & Produce": "Pine Tree",
-    "Harbor Fish Market (Lobster)": "Harbor Fish",
-    "Harbor Fish Market (Oysters)": "Harbor Fish Oys",
-    "Scarborough Fish & Lobster": "Scarborough F&L",
-    "Free Range Fish & Lobster": "Free Range",
-    "SoPo Seafood Market & Raw Bar": "SoPo Seafood",
-    "Two Tides Seafood": "Two Tides",
-    "Five Islands Lobster Co.": "Five Islands",
-}
 
 
 def _parse_ts(s: str) -> datetime | None:
@@ -144,11 +140,6 @@ def label_for_row(key: str, snippet: str = "") -> str:
     return label
 
 
-def short_market(name: str) -> str:
-    """Abbreviate long market names for the board."""
-    return _MARKET_SHORTCUTS.get(name, name.split("(")[0].strip()[:22])
-
-
 def market_roster() -> list[dict]:
     """Return every configured market for demo/live board display."""
     return [
@@ -163,10 +154,7 @@ def market_roster() -> list[dict]:
 
 
 def _demo_market_rows(*, oysters: bool = False) -> list[dict]:
-    markets = [
-        market for market in market_roster()
-        if ("Oysters" in market["name"]) is oysters
-    ]
+    markets = [market for market in market_roster() if ("Oysters" in market["name"]) is oysters]
     return [
         {
             "label": market["short"],
@@ -216,11 +204,7 @@ def price_parts(
     board_glance: bool = False,
 ) -> tuple[str, str]:
     """Split display price into chalk amount + unit label."""
-    if (
-        price_is_range
-        and price_high is not None
-        and price_high > price
-    ):
+    if price_is_range and price_high is not None and price_high > price:
         if board_glance and _range_too_wide_for_board(price, price_high):
             amount = f"from ${price:.2f}"
         else:
@@ -331,9 +315,7 @@ def _display_values_from_row(row: dict) -> tuple[float, str, float | None, bool]
     if high is not None:
         high = float(high)
     is_range = bool(
-        row.get("price_is_range")
-        or display_type == "range"
-        or (high is not None and high > price)
+        row.get("price_is_range") or display_type == "range" or (high is not None and high > price)
     )
     return price, unit, high, is_range
 
@@ -355,20 +337,12 @@ def _provenance_note(row: dict) -> str:
     elif display_type == "normalized" and norm is not None:
         parts.append(f"~${float(norm):.2f}/lb")
     elif weight:
-        parts.append(
-            f"catalog ${float(row.get('raw_price', 0)):.2f} total "
-            f"÷ {float(weight):g} lb"
-        )
-    elif (
-        row.get("price_is_range")
-        or row.get("price_display_type") == "range"
-    ):
+        parts.append(f"catalog ${float(row.get('raw_price', 0)):.2f} total ÷ {float(weight):g} lb")
+    elif row.get("price_is_range") or row.get("price_display_type") == "range":
         hi = row.get("display_price_high") or row.get("raw_price_high") or row.get("price_high")
         if hi is not None:
             lo = row.get("display_price") or row.get("raw_price") or row.get("price")
-            parts.append(
-                f"catalog range ${float(lo):.2f}–${float(hi):.2f}"
-            )
+            parts.append(f"catalog range ${float(lo):.2f}–${float(hi):.2f}")
     url = row.get("source_url") or ""
     if url:
         parts.append(url)
@@ -404,26 +378,24 @@ def _board_market_coverage(
                     if name not in on_lobster_board
                     else "fetched_but_no_passed_rows"
                 )
-            out.append({
-                "name": name,
-                "short": short_market(name),
-                "location": cfg.get("location", ""),
-                "status": status,
-                "reason": human_blocker_reason(blocker),
-                "fetched": int(entry.get("posts_fetched", 0)),
-                "source_hint": entry.get("source_used") or (
-                    "web + FB" if cfg.get("web") else "FB"
-                ),
-                "web_url": cfg.get("web") or cfg.get("reference_url") or "",
-            })
+            out.append(
+                {
+                    "name": name,
+                    "short": short_market(name),
+                    "location": cfg.get("location", ""),
+                    "status": status,
+                    "reason": human_blocker_reason(blocker),
+                    "fetched": int(entry.get("posts_fetched", 0)),
+                    "source_hint": entry.get("source_used")
+                    or ("web + FB" if cfg.get("web") else "FB"),
+                    "web_url": cfg.get("web") or cfg.get("reference_url") or "",
+                }
+            )
         return out
 
     logs = read_jsonl("run-log.jsonl")
     latest = logs[-1] if logs else {}
-    fetch_map = {
-        e.get("market", ""): int(e.get("fetched", 0))
-        for e in latest.get("errors", [])
-    }
+    fetch_map = {e.get("market", ""): int(e.get("fetched", 0)) for e in latest.get("errors", [])}
     out = []
     for m in MARKETS:
         name = m["name"]
@@ -443,27 +415,25 @@ def _board_market_coverage(
                 reason = "FB blocked — menu reference only, no live scrape"
             else:
                 reason = "FB only — needs cookies or search credentials"
-        out.append({
-            "name": name,
-            "short": short_market(name),
-            "location": m.get("location", ""),
-            "status": status,
-            "reason": reason,
-            "fetched": fetched,
-            "source_hint": "web + FB" if m.get("web") else "FB",
-            "web_url": m.get("web") or m.get("reference_url") or "",
-        })
+        out.append(
+            {
+                "name": name,
+                "short": short_market(name),
+                "location": m.get("location", ""),
+                "status": status,
+                "reason": reason,
+                "fetched": fetched,
+                "source_hint": "web + FB" if m.get("web") else "FB",
+                "web_url": m.get("web") or m.get("reference_url") or "",
+            }
+        )
     return out
 
 
 def _row_identity(row: dict) -> tuple:
     kind = row.get("kind", "")
     if kind == "special":
-        title = (
-            row.get("catalog_title")
-            or row.get("snippet")
-            or row.get("key", "")
-        )
+        title = row.get("catalog_title") or row.get("snippet") or row.get("key", "")
         return (
             row.get("market", ""),
             kind,
@@ -497,10 +467,7 @@ def _display_values(row: dict) -> tuple[float, str, float | None, bool]:
     if price_high is not None:
         price_high = float(price_high)
 
-    price_is_range = bool(
-        row.get("price_is_range")
-        or row.get("price_display_type") == "range"
-    )
+    price_is_range = bool(row.get("price_is_range") or row.get("price_display_type") == "range")
     if price_high is not None and price_high > price:
         price_is_range = True
     return price, unit, price_high, price_is_range
@@ -542,10 +509,31 @@ _LOBSTER_HEADLINE_TIER_RANK: dict[str, int] = {
 }
 
 _LOBSTER_SNIPPET_REJECT = (
-    "steamer", "steamers", "culls", "cull ", "cull:", "butter", "chowder", "bisque",
-    "scallop", "shrimp", "mussel", "clam", "crab", "snow crab",
-    "lob/crab", "clear meat", "harborfish.com", "tuna", "haddock",
-    "salmon", "cod ", "swordfish", "halibut", "sole", "flounder",
+    "steamer",
+    "steamers",
+    "culls",
+    "cull ",
+    "cull:",
+    "butter",
+    "chowder",
+    "bisque",
+    "scallop",
+    "shrimp",
+    "mussel",
+    "clam",
+    "crab",
+    "snow crab",
+    "lob/crab",
+    "clear meat",
+    "harborfish.com",
+    "tuna",
+    "haddock",
+    "salmon",
+    "cod ",
+    "swordfish",
+    "halibut",
+    "sole",
+    "flounder",
 )
 
 
@@ -655,19 +643,21 @@ def _collapse_lobster_headlines(items: list[dict]) -> list[dict]:
                 else f"hard ${sort_price:.2f}"
             )
             price_amount = f"${sort_price:.2f}"
-        headlines.append({
-            **anchor,
-            "label": "Lobster",
-            "row_primary": short_market(market),
-            "row_secondary": detail,
-            "subtext": "",
-            "sort_price": sort_price,
-            "price_amount": price_amount,
-            "unit_label": "/lb",
-            "price_str": f"${sort_price:.2f}/lb",
-            "is_headline": True,
-            "is_consolidated": True,
-        })
+        headlines.append(
+            {
+                **anchor,
+                "label": "Lobster",
+                "row_primary": short_market(market),
+                "row_secondary": detail,
+                "subtext": "",
+                "sort_price": sort_price,
+                "price_amount": price_amount,
+                "unit_label": "/lb",
+                "price_str": f"${sort_price:.2f}/lb",
+                "is_headline": True,
+                "is_consolidated": True,
+            }
+        )
 
     headlines.sort(key=lambda x: (x.get("sort_price", 0), x.get("market_short", "")))
 
@@ -775,9 +765,7 @@ def _cap_specials_by_market(items: list[dict]) -> list[dict]:
 
     capped.sort(
         key=lambda x: (
-            market_order.index(x.get("market", ""))
-            if x.get("market", "") in market_order
-            else 99,
+            market_order.index(x.get("market", "")) if x.get("market", "") in market_order else 99,
             _special_item_rank(x),
         ),
     )
@@ -818,8 +806,9 @@ def load_board_rows(
     min_confidence: int = 70,
     today_only: bool = False,
     market: str | None = None,
+    prices_rows: list[dict] | None = None,
 ) -> list[dict]:
-    rows = read_jsonl("prices.jsonl")
+    rows = prices_rows if prices_rows is not None else read_jsonl("prices.jsonl")
     filtered: list[dict] = []
     for r in rows:
         if r.get("gate_passed") is False:
@@ -877,7 +866,8 @@ def load_board_rows(
             web_lobster_markets.add(r.get("market", ""))
     if web_lobster_markets:
         final = [
-            r for r in final
+            r
+            for r in final
             if not (
                 r.get("kind") == "lobster_tier"
                 and r.get("market") in web_lobster_markets
@@ -887,10 +877,12 @@ def load_board_rows(
     return final
 
 
-def _calculate_historical_trends() -> dict:
+def _calculate_historical_trends(prices_rows: list[dict] | None = None) -> dict:
     from collections import defaultdict
+
     by_date_shell = defaultdict(lambda: defaultdict(list))
-    for r in read_jsonl("prices.jsonl"):
+    source_rows = prices_rows if prices_rows is not None else read_jsonl("prices.jsonl")
+    for r in source_rows:
         if r.get("kind") != "lobster_tier" or r.get("gate_passed") is False:
             continue
         ts = r.get("observed_at", "")
@@ -899,36 +891,40 @@ def _calculate_historical_trends() -> dict:
         date_str = ts[:10]
         key = r.get("key", "").lower()
         snippet = r.get("snippet", "").lower()
-        
+
         is_soft = "soft" in key or "soft" in snippet
-        is_hard = "hard" in key or "hard" in snippet or any(k in key for k in ("chicks", "1lb", "1.25lb", "1.5lb", "1.75lb", "2lb"))
-        
+        is_hard = (
+            "hard" in key
+            or "hard" in snippet
+            or any(k in key for k in ("chicks", "1lb", "1.25lb", "1.5lb", "1.75lb", "2lb"))
+        )
+
         price = float(r.get("price", 0))
         if not (5.0 < price < 50.0):
             continue
-            
+
         if is_soft:
             by_date_shell[date_str]["soft"].append(price)
         elif is_hard:
             by_date_shell[date_str]["hard"].append(price)
-            
+
     dates = sorted(by_date_shell.keys())[-14:]
     labels = []
     soft_avgs = []
     hard_avgs = []
-    
+
     for d in dates:
         try:
             dt = datetime.strptime(d, "%Y-%m-%d")
             labels.append(dt.strftime("%b %d"))
         except ValueError:
             labels.append(d[5:])
-            
+
         soft_list = by_date_shell[d]["soft"]
         hard_list = by_date_shell[d]["hard"]
         soft_avgs.append(round(sum(soft_list) / len(soft_list), 2) if soft_list else None)
         hard_avgs.append(round(sum(hard_list) / len(hard_list), 2) if hard_list else None)
-        
+
     return {
         "labels": labels,
         "soft_shell": soft_avgs,
@@ -943,8 +939,12 @@ def build_board(
     market: str | None = None,
 ) -> dict:
     """Group gated prices into board sections."""
+    all_prices = read_jsonl("prices.jsonl")
     rows = load_board_rows(
-        min_confidence=min_confidence, today_only=today_only, market=market,
+        min_confidence=min_confidence,
+        today_only=today_only,
+        market=market,
+        prices_rows=all_prices,
     )
     url_lookup = _source_url_lookup()
     sections: dict[str, list[dict]] = {
@@ -973,11 +973,7 @@ def build_board(
         label = label_for_row(r.get("key", "?"), r.get("snippet", ""))
         display_price, display_unit, display_high, price_is_range = _display_values_from_row(r)
         if kind == "special":
-            title = (
-                r.get("catalog_title")
-                or r.get("snippet")
-                or label
-            )
+            title = r.get("catalog_title") or r.get("snippet") or label
             dedupe_key = (
                 market_name,
                 kind,
@@ -997,8 +993,10 @@ def build_board(
         markets_with_prices.add(market_name)
         post_id = r.get("post_id", "")
         amount, unit_label = price_parts(
-            display_price, display_unit,
-            price_high=display_high, price_is_range=price_is_range,
+            display_price,
+            display_unit,
+            price_high=display_high,
+            price_is_range=price_is_range,
             board_glance=bucket == "special",
         )
         provenance = _provenance_note(r)
@@ -1011,9 +1009,7 @@ def build_board(
         item = {
             "label": label,
             "row_primary": (
-                f"{short_market(market_name)} — {special_label}"
-                if bucket == "special"
-                else label
+                f"{short_market(market_name)} — {special_label}" if bucket == "special" else label
             ),
             "key": r.get("key", ""),
             "price": float(r.get("price", 0)),
@@ -1022,8 +1018,10 @@ def build_board(
             "price_is_range": price_is_range,
             "unit": display_unit,
             "price_str": format_price(
-                display_price, display_unit,
-                price_high=display_high, price_is_range=price_is_range,
+                display_price,
+                display_unit,
+                price_high=display_high,
+                price_is_range=price_is_range,
             ),
             "price_amount": amount,
             "unit_label": unit_label,
@@ -1034,15 +1032,18 @@ def build_board(
             "observed_at": r.get("observed_at", ""),
             "observed_display": _format_observed(r.get("observed_at", "")),
             "source": r.get("source", "unknown"),
-            "source_url": r.get("source_url") or url_lookup.get(
-                (market_name, str(post_id)), "",
+            "source_url": r.get("source_url")
+            or url_lookup.get(
+                (market_name, str(post_id)),
+                "",
             ),
             "post_id": post_id,
             "snippet": r.get("snippet", ""),
             "provenance": provenance,
             "raw_price": r.get("raw_price"),
             "normalized_price": r.get("normalized_price"),
-            "normalization_weight": r.get("normalization_weight") or r.get("normalization_weight_lb"),
+            "normalization_weight": r.get("normalization_weight")
+            or r.get("normalization_weight_lb"),
             "tilt": _TAG_TILTS[tag_index % len(_TAG_TILTS)],
         }
         tag_index += 1
@@ -1069,9 +1070,7 @@ def build_board(
     unavailable_count = blocked_count + partial_count
     live_names = [c["short"] for c in coverage if c["status"] == "live"]
     if live_names and unavailable_count:
-        coverage_summary = (
-            f"{len(live_names)} live · {unavailable_count} awaiting feed"
-        )
+        coverage_summary = f"{len(live_names)} live · {unavailable_count} awaiting feed"
     elif live_names:
         coverage_summary = f"{len(live_names)} live"
     elif unavailable_count:
@@ -1092,7 +1091,7 @@ def build_board(
         "coverage_summary": coverage_summary,
         "live_market_names": live_names,
         "total_items": sum(len(v) for v in sections.values()),
-        "trends": _calculate_historical_trends(),
+        "trends": _calculate_historical_trends(all_prices),
     }
 
 
@@ -1171,26 +1170,44 @@ def render_terminal(board: dict, *, width: int = 62) -> str:
 
     lines.append(f"{a['bg']}{a['rope']}╔{'═' * (w - 2)}╗{a['reset']}")
     title = board["title"].center(w - 2)
-    lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['bold']}{a['chalk']}{title}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}")
+    lines.append(
+        f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['bold']}{a['chalk']}{title}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
+    )
     sub = board["subtitle"].center(w - 2)
-    lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['dim']}{a['chalk']}{sub}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}")
+    lines.append(
+        f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['dim']}{a['chalk']}{sub}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
+    )
     date_line = board.get("display_date", "").center(w - 2)
-    lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['gold']}{date_line}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}")
+    lines.append(
+        f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['gold']}{date_line}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
+    )
     lines.append(f"{a['bg']}{a['rope']}╠{'═' * (w - 2)}╣{a['reset']}")
 
     for section_key in ("lobster", "oyster", "special"):
         emoji, heading, _u = _SECTION_META[section_key]
         items = board["sections"].get(section_key, [])
-        accent = a["lobster"] if section_key == "lobster" else a["ocean"] if section_key == "oyster" else a["gold"]
+        accent = (
+            a["lobster"]
+            if section_key == "lobster"
+            else a["ocean"]
+            if section_key == "oyster"
+            else a["gold"]
+        )
         head = f" {emoji}  {heading} "
         pad = w - 2 - len(head)
-        lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{accent}{a['bold']}{head}{' ' * max(0, pad)}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}")
+        lines.append(
+            f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{accent}{a['bold']}{head}{' ' * max(0, pad)}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
+        )
         if not items:
             empty = "  (nothing on the board yet)".ljust(w - 2)[: w - 2]
-            lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['dim']}{a['chalk']}{empty}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}")
+            lines.append(
+                f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['dim']}{a['chalk']}{empty}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
+            )
         else:
-            cap = 8 if section_key == "lobster" else (
-                _MAX_SPECIALS_TOTAL if section_key == "special" else _MAX_SECTION_ITEMS
+            cap = (
+                8
+                if section_key == "lobster"
+                else (_MAX_SPECIALS_TOTAL if section_key == "special" else _MAX_SECTION_ITEMS)
             )
             for item in items[:cap]:
                 if section_key == "special":
@@ -1203,7 +1220,9 @@ def render_terminal(board: dict, *, width: int = 62) -> str:
                     f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['chalk']}{visible}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
                 )
         sep = f"{a['rope']}{'·' * (w - 2)}{a['reset']}"
-        lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{sep}{a['bg']}{a['rope']}║{a['reset']}")
+        lines.append(
+            f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{sep}{a['bg']}{a['rope']}║{a['reset']}"
+        )
 
     cov = board.get("coverage_summary", "")
     if board.get("is_demo"):
@@ -1213,15 +1232,16 @@ def render_terminal(board: dict, *, width: int = 62) -> str:
     else:
         demo_note = f"  {board['total_items']} prices · AAA-gated"
     demo_note = demo_note.center(w - 2)[: w - 2]
-    lines.append(f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['dim']}{a['chalk']}{demo_note}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}")
+    lines.append(
+        f"{a['bg']}{a['rope']}║{a['reset']}{a['bg']}{a['dim']}{a['chalk']}{demo_note}{a['reset']}{a['bg']}{a['rope']}║{a['reset']}"
+    )
     lines.append(f"{a['bg']}{a['rope']}╚{'═' * (w - 2)}╝{a['reset']}")
     return "\n".join(lines)
 
 
-
-
 def render_html(board: dict) -> str:
     from chalk_board_html import render_chalk_html
+
     return render_chalk_html(board)
 
 
@@ -1234,6 +1254,7 @@ def write_html_board(path: Path | None = None, **kwargs) -> Path:
 
 
 # ---- Telegram board formatting ----
+
 
 def render_telegram_board(
     market: str,
@@ -1250,7 +1271,8 @@ def render_telegram_board(
     for item in items[:8]:
         label = label_for(item.get("key", item.get("label", "?")))[:14]
         price = item.get("price_str") or format_price(
-            float(item.get("price", 0)), item.get("unit", "lb"),
+            float(item.get("price", 0)),
+            item.get("unit", "lb"),
         )
         row = f"  {label:<14} {price:>10}"
         lines.append(f"║{row:<28}║")

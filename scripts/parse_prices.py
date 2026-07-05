@@ -9,7 +9,9 @@ Outputs: list of (kind, key, price, unit, raw_snippet) tuples.
   - kind "oyster_tier":  oysters $/doz, canonical size/grade, unit "doz"
   - kind "special":      any other seafood item or non-live lobster product
 """
+
 from __future__ import annotations
+
 import re
 from typing import Literal
 
@@ -21,7 +23,10 @@ _TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:hard\s*shell|hardshell)\b", "hard_shell"),
     (r"\b(?:firm\s*shell|firm)\b", "hard_shell"),
     (r"\b(?:select|selects)\b", "select"),
-    (r"(?:2\s*lb\s*(?:and|or|&)\s*(?:up|\+|plus)|2\s*lb\s*plus|2lb\+|2\s*pound\s*plus|\bjumbo)", "2lb_plus"),
+    (
+        r"(?:2\s*lb\s*(?:and|or|&)\s*(?:up|\+|plus)|2\s*lb\s*plus|2lb\+|2\s*pound\s*plus|\bjumbo)",
+        "2lb_plus",
+    ),
     (r"(?:1\s*⅛|1\.125|1\s*1/8)\s*lb", "1.125lb"),
     (r"(?:1\s*¼|1\.25|1\s*1/4)\s*lb", "1.25lb"),
     (r"(?:1\s*½|1\.5|1\s*1/2)\s*lb", "1.5lb"),
@@ -39,7 +44,10 @@ _OYSTER_TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:selects?)\b", "select"),
     (r"\b(?:standards?)\b", "standard"),
     (r"\b(?:pints?)\b", "pint"),
-    (r"\b(?:wellfleet|wells|belon|blue\s*points?|kumamotos?|malaquite|beausoleils?|moonstones?|pearl\s*points?|savage\s*blondes?)\b", "named_variety"),
+    (
+        r"\b(?:wellfleet|wells|belon|blue\s*points?|kumamotos?|malaquite|beausoleils?|moonstones?|pearl\s*points?|savage\s*blondes?)\b",
+        "named_variety",
+    ),
     (r"\b(?:small|petite|pearl)\b", "small"),
     (r"\b(?:medium)\b", "medium"),
     (r"\b(?:large)\b", "large"),
@@ -81,24 +89,64 @@ _PRICE_EA_RE = re.compile(
     re.IGNORECASE,
 )
 # Bare $X.XX — only when context implies a price (no unit suffix)
-_PRICE_BARE_RE = re.compile(r"\$\s*(\d+(?:\.\d+)?)(?!\s*(?:/|per|\s*(?:lb|doz|dz|ea|each|roll)\b))", re.IGNORECASE)
+_PRICE_BARE_RE = re.compile(
+    r"\$\s*(\d+(?:\.\d+)?)(?!\s*(?:/|per|\s*(?:lb|doz|dz|ea|each|roll)\b))", re.IGNORECASE
+)
 
 _SPECIAL_KEYWORDS = [
-    "halibut", "scallops", "clams", "shrimp",
-    "haddock", "salmon", "cod", "pollock", "tuna", "swordfish",
-    "chowder", "bisque", "roll", "mac", "bake", "ravioli",
-    "scallop", "clam", "crab", "mussels", "monkfish",
-    "sole", "flounder", "char", "bluefish", "hake",
-    "smoked", "stew",
+    "halibut",
+    "scallops",
+    "clams",
+    "shrimp",
+    "haddock",
+    "salmon",
+    "cod",
+    "pollock",
+    "tuna",
+    "swordfish",
+    "chowder",
+    "bisque",
+    "roll",
+    "mac",
+    "bake",
+    "ravioli",
+    "scallop",
+    "clam",
+    "crab",
+    "mussels",
+    "monkfish",
+    "sole",
+    "flounder",
+    "char",
+    "bluefish",
+    "hake",
+    "smoked",
+    "stew",
 ]
 
 # AC4b specials post detection keywords
 SPECIALS_POST_KEYWORDS = [
-    "halibut", "scallops", "clams", "shrimp",
-    "haddock", "salmon", "cod", "tuna", "swordfish",
-    "chowder", "roll", "mussels", "monkfish",
-    "sole", "flounder", "bluefish", "arctic char",
-    "today's catch", "catch of the day", "special", "fish fry",
+    "halibut",
+    "scallops",
+    "clams",
+    "shrimp",
+    "haddock",
+    "salmon",
+    "cod",
+    "tuna",
+    "swordfish",
+    "chowder",
+    "roll",
+    "mussels",
+    "monkfish",
+    "sole",
+    "flounder",
+    "bluefish",
+    "arctic char",
+    "today's catch",
+    "catch of the day",
+    "special",
+    "fish fry",
 ]
 
 _CANONICAL_SPECIAL_MAP: list[tuple[str, str]] = [
@@ -174,17 +222,17 @@ def _clause_of(text: str, pos: int) -> str:
     comma = text.rfind(",", 0, pos)
     semi = text.rfind(";", 0, pos)
     dot = text.rfind(". ", 0, pos)
-    
+
     double_nl_start = -1
     for m in re.finditer(r"\n[\s\u2063]*\n", text[:pos]):
         double_nl_start = m.end()
-        
+
     start = max(comma, semi, dot, double_nl_start, and_start)
     if start >= 0:
         if start == and_start or start == double_nl_start:
             return text[start:pos]
-        return text[start + 1:pos]
-    return text[max(0, pos - 60):pos]
+        return text[start + 1 : pos]
+    return text[max(0, pos - 60) : pos]
 
 
 def _shell_context_at(text: str, price_pos: int) -> str | None:
@@ -197,7 +245,7 @@ def _shell_context_at(text: str, price_pos: int) -> str | None:
     if hard_idx > soft_idx >= 0 or (hard_idx >= 0 and soft_idx < 0):
         return "hard"
     # Short look-back for section headers immediately before the clause.
-    header = text[max(0, price_pos - 120):price_pos].lower()
+    header = text[max(0, price_pos - 120) : price_pos].lower()
     soft_idx = max(header.rfind("softshell"), header.rfind("soft shell"))
     hard_idx = max(header.rfind("hardshell"), header.rfind("hard shell"))
     if soft_idx > hard_idx >= 0 or (soft_idx >= 0 and hard_idx < 0):
@@ -231,10 +279,12 @@ def _infer_lobster_tier(text: str, price_pos: int) -> str | None:
     shell = _shell_context_at(text, price_pos)
     if tier:
         return _qualify_tier_with_shell(tier, shell)
-    window = text[max(0, price_pos - 120): min(len(text), price_pos + 40)].lower()
+    window = text[max(0, price_pos - 120) : min(len(text), price_pos + 40)].lower()
     if "lobster" not in window and "lobstah" not in window:
         return None
-    if any(x in window for x in ("lobster meat", "picked meat", "bisque", "ravioli", "lobster roll")):
+    if any(
+        x in window for x in ("lobster meat", "picked meat", "bisque", "ravioli", "lobster roll")
+    ):
         return None
     if shell == "soft" or "soft shell" in window or "softshell" in window:
         return "soft_shell"
@@ -389,8 +439,14 @@ def is_specials_post(text: str) -> bool:
         return False
     # Exclude lobster-only tier listing posts (no real specials content)
     lobster_only = (
-        any(kw in text_l for kw in ("chicks", "hard shell", "soft shell", "old shell", "live lobster"))
-        and not any(kw in text_l for kw in ("halibut", "scallops", "clams", "shrimp", "haddock", "salmon", "chowder"))
+        any(
+            kw in text_l
+            for kw in ("chicks", "hard shell", "soft shell", "old shell", "live lobster")
+        )
+        and not any(
+            kw in text_l
+            for kw in ("halibut", "scallops", "clams", "shrimp", "haddock", "salmon", "chowder")
+        )
         and "roll" not in text_l
     )
     if lobster_only:
@@ -408,6 +464,7 @@ def parse_post(text: str) -> list[ParsedRow]:
     if not text:
         return []
     import unicodedata
+
     text = unicodedata.normalize("NFKD", text).replace("\u2044", "/")
     rows: list[ParsedRow] = []
 
@@ -422,21 +479,40 @@ def parse_post(text: str) -> list[ParsedRow]:
             clause_l = clause.lower()
             if any(kw in clause_l for kw in ("cull", "culls", "one claw", "no claw")):
                 continue
-            if any(kw in clause_l for kw in (
-                "scallop", "mussel", "shrimp", "clam", "haddock", "salmon",
-                "crab", "oyster", "halibut", "cod", "tuna", "swordfish",
-            )):
+            if any(
+                kw in clause_l
+                for kw in (
+                    "scallop",
+                    "mussel",
+                    "shrimp",
+                    "clam",
+                    "haddock",
+                    "salmon",
+                    "crab",
+                    "oyster",
+                    "halibut",
+                    "cod",
+                    "tuna",
+                    "swordfish",
+                )
+            ):
                 continue
-            if any(kw in clause_l for kw in ("swordfish", "halibut", "tuna", "haddock", "cod")) and "lobster" not in clause_l:
+            if (
+                any(kw in clause_l for kw in ("swordfish", "halibut", "tuna", "haddock", "cod"))
+                and "lobster" not in clause_l
+            ):
                 continue
-            if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
+            if any(
+                kw in clause_l
+                for kw in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")
+            ):
                 continue
-            immediate = text[max(0, m.start() - 30):m.start()].lower()
+            immediate = text[max(0, m.start() - 30) : m.start()].lower()
             if "cooked" in immediate:
                 continue
             if _clause_contains(text, m.start(), "oyster"):
                 continue
-            snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
+            snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
             rows.append(("lobster_tier", tier, price, "lb", snippet))
 
     text_lower = text.lower()
@@ -449,13 +525,13 @@ def parse_post(text: str) -> list[ParsedRow]:
         grade = _find_oyster_grade_in_clause(clause)
         if not grade:
             grade = "oyster"
-        snippet = text[max(0, m.start() - 50):m.end() + 20].strip()[:120]
+        snippet = text[max(0, m.start() - 50) : m.end() + 20].strip()[:120]
         rows.append(("oyster_tier", grade, price, "doz", snippet))
 
     tier_snippets = {r[4] for r in rows if r[0] == "lobster_tier"}
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
-        snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
+        snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
         if snippet in tier_snippets:
             continue
         kw = _find_special_kw_in_clause(text, m.start())
@@ -464,7 +540,10 @@ def parse_post(text: str) -> list[ParsedRow]:
         if kw:
             clause = _clause_of(text, m.start())
             clause_l = clause.lower()
-            if any(kw_x in clause_l for kw_x in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
+            if any(
+                kw_x in clause_l
+                for kw_x in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")
+            ):
                 continue
             key = _canonical_special_key(clause, kw)
             rows.append(("special", key, price, "lb", snippet))
@@ -476,7 +555,7 @@ def parse_post(text: str) -> list[ParsedRow]:
             kw = _find_special_kw(text, m.start())
         if kw:
             clause = _clause_of(text, m.start())
-            snippet = text[max(0, m.start() - 40):m.end() + 30].strip()[:120]
+            snippet = text[max(0, m.start() - 40) : m.end() + 30].strip()[:120]
             key = _canonical_special_key(clause, kw)
             rows.append(("special", key, price, "ea", snippet))
 
@@ -496,22 +575,27 @@ def parse_post(text: str) -> list[ParsedRow]:
         clause_l = clause.lower()
         tier = _infer_lobster_tier(text, m.start())
         if tier and "lobster" in clause_l and not _find_special_kw_in_clause(text, m.start()):
-            if any(kw in clause_l for kw in ("lobster meat", "picked meat", "bisque", "cull", "culls")):
+            if any(
+                kw in clause_l for kw in ("lobster meat", "picked meat", "bisque", "cull", "culls")
+            ):
                 continue
-            immediate = text[max(0, m.start() - 30):m.start()].lower()
+            immediate = text[max(0, m.start() - 30) : m.start()].lower()
             if "cooked" in immediate:
                 continue
-            snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
+            snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
             rows.append(("lobster_tier", tier, price, "lb", snippet))
             continue
         kw = _find_special_kw_in_clause(text, m.start())
         if not kw:
             kw = _find_special_kw(text, m.start())
         if kw:
-            if any(kw_x in clause_l for kw_x in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")):
+            if any(
+                kw_x in clause_l
+                for kw_x in ("lobster meat", "picked meat", "bisque", "mac and cheese", "ravioli")
+            ):
                 continue
             unit = _infer_unit_from_clause(clause)
-            snippet = text[max(0, m.start() - 40):m.end() + 20].strip()[:120]
+            snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
             key = _canonical_special_key(clause, kw)
             rows.append(("special", key, price, unit, snippet))
 

@@ -1,11 +1,13 @@
 """Unit tests for quality_gate module."""
+
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from quality_gate import gate_rows, score_row, source_quality_score
 from parse_prices import is_specials_post
+from quality_gate import gate_rows, score_row, source_quality_score
 
 FRESH_TS = datetime.now(timezone.utc).isoformat()
 STALE_TS = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
@@ -23,7 +25,9 @@ def test_source_quality():
 def test_gate_passes_web_special():
     rows = [("special", "halibut", 18.99, "lb", "Fresh halibut $18.99/lb")]
     passed, quarantined = gate_rows(
-        rows, source="web", observed_at=FRESH_TS,
+        rows,
+        source="web",
+        observed_at=FRESH_TS,
         full_text="Fresh halibut $18.99/lb",
         parse_meta=[{"price_pos": 13, "bare_price": False, "structured": True}],
     )
@@ -38,8 +42,11 @@ def test_gate_quarantines_low_quality_source():
     """DDG snippets rarely pass Gate B — effective conf = raw × 0.5."""
     rows = [("special", "halibut", 18.99, "lb", "halibut $18.99/lb")]
     passed, quarantined = gate_rows(
-        rows, source="duckduckgo", observed_at=FRESH_TS,
-        full_text="halibut $18.99/lb", parse_meta=[{"price_pos": 8, "bare_price": False}],
+        rows,
+        source="duckduckgo",
+        observed_at=FRESH_TS,
+        full_text="halibut $18.99/lb",
+        parse_meta=[{"price_pos": 8, "bare_price": False}],
     )
     assert len(passed) == 0
     assert len(quarantined) == 1
@@ -57,7 +64,9 @@ def test_gate_quarantines_out_of_band():
 
 def test_lobster_tier_passes_at_60():
     row = ("lobster_tier", "hard_shell", 9.50, "lb", "hard shell $9.50/lb")
-    gated = score_row(row, source="web", observed_at=FRESH_TS, full_text="hard shell $9.50/lb", structured=True)
+    gated = score_row(
+        row, source="web", observed_at=FRESH_TS, full_text="hard shell $9.50/lb", structured=True
+    )
     assert gated.gate_passed
     assert gated.confidence >= 60
     print("  ✓ lobster tier passes at threshold 60")

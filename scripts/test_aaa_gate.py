@@ -1,4 +1,5 @@
 """AAA gate and board behavior tests."""
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,7 @@ from board_render import build_board, get_board
 from market_coverage import build_market_coverage
 from markets import MARKETS
 from parse_web import parse_web_catalog_rows
-from state import append_jsonl_deduped, persist_key
-
+from state import append_jsonl_deduped
 
 PINE_TREE_FIXTURE = """
 <ul class="products">
@@ -43,24 +43,32 @@ HARBOR_RANGE_FIXTURE = """
 def test_no_demo_fallback_in_default_board(tmp_path: Path) -> None:
     prices = tmp_path / "prices.jsonl"
     prices.write_text(
-        json.dumps({
-            "market": "Pine Tree Seafood & Produce",
-            "observed_at": datetime.now(timezone.utc).isoformat(),
-            "post_id": "web-test",
-            "kind": "special",
-            "key": "salmon",
-            "price": 8.99,
-            "unit": "lb",
-            "snippet": "Salmon",
-            "confidence": 75,
-            "gate_passed": True,
-            "source": "web",
-            "source_url": "https://example.com",
-            "parser_version": "test/1.0",
-        }) + "\n",
+        json.dumps(
+            {
+                "market": "Pine Tree Seafood & Produce",
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "post_id": "web-test",
+                "kind": "special",
+                "key": "salmon",
+                "price": 8.99,
+                "unit": "lb",
+                "snippet": "Salmon",
+                "confidence": 75,
+                "gate_passed": True,
+                "source": "web",
+                "source_url": "https://example.com",
+                "parser_version": "test/1.0",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
-    with patch.object(board_render, "read_jsonl", return_value=json.loads(prices.read_text().strip().split("\n")[0]) and [json.loads(line) for line in prices.read_text().strip().split("\n") if line]):
+    with patch.object(
+        board_render,
+        "read_jsonl",
+        return_value=json.loads(prices.read_text().strip().split("\n")[0])
+        and [json.loads(line) for line in prices.read_text().strip().split("\n") if line],
+    ):
         board = get_board(demo=False)
     assert board.get("is_demo") is not True
     for items in board["sections"].values():
@@ -95,25 +103,38 @@ def test_no_alerts_suppresses_and_records() -> None:
         parse_meta=[{"structured": True}],
     )
     persist_seen: set[str] = set()
+    cumulative_passed: dict[str, int] = {}
     with tempfile.TemporaryDirectory() as td:
         data_dir = Path(td)
-        with patch.object(state, "DATA_DIR", data_dir), patch.object(
-            scrape_markets, "alert_lobster_drop", return_value=True,
-        ) as alert_fn:
+        with (
+            patch.object(state, "DATA_DIR", data_dir),
+            patch.object(
+                scrape_markets,
+                "alert_lobster_drop",
+                return_value=True,
+            ) as alert_fn,
+        ):
             scrape_markets._process_gated_rows(
-                passed, [], MARKETS[3], {
-                    "post_id": "t1", "url": "https://x", "source": "web",
+                passed,
+                [],
+                MARKETS[3],
+                {
+                    "post_id": "t1",
+                    "url": "https://x",
+                    "source": "web",
                 },
                 datetime.now(timezone.utc).isoformat(),
                 stats,
                 send_alerts=False,
                 persist_seen=persist_seen,
+                cumulative_passed=cumulative_passed,
             )
             alert_fn.assert_not_called()
             assert stats["alerts_suppressed"] >= 1
             if (data_dir / "prices.jsonl").exists():
                 lines = [
-                    line for line in (data_dir / "prices.jsonl").read_text().strip().split("\n")
+                    line
+                    for line in (data_dir / "prices.jsonl").read_text().strip().split("\n")
                     if line
                 ]
                 assert len(lines) == 1
@@ -137,7 +158,74 @@ def test_pine_tree_normalization_metadata() -> None:
 
 def test_lobster_board_headlines_only_market_rate() -> None:
     """Board shows one consolidated row per market — lowest soft/hard $/lb."""
-    board = build_board()
+    rows = [
+        {
+            "market": "Harbor Fish Market (Lobster)",
+            "observed_at": "2026-07-05T03:09:07+00:00",
+            "post_id": "web-harbor",
+            "kind": "lobster_tier",
+            "key": "1lb_soft_shell",
+            "price": 12.5,
+            "unit": "lb",
+            "snippet": "soft shell lobster",
+            "confidence": 80,
+            "gate_passed": True,
+            "source": "web",
+            "source_url": "https://harborfish.com",
+            "display_price": 12.5,
+            "display_unit": "lb",
+        },
+        {
+            "market": "Harbor Fish Market (Lobster)",
+            "observed_at": "2026-07-05T03:09:07+00:00",
+            "post_id": "web-harbor",
+            "kind": "lobster_tier",
+            "key": "1lb_hard_shell",
+            "price": 14.0,
+            "unit": "lb",
+            "snippet": "hard shell lobster",
+            "confidence": 80,
+            "gate_passed": True,
+            "source": "web",
+            "source_url": "https://harborfish.com",
+            "display_price": 14.0,
+            "display_unit": "lb",
+        },
+        {
+            "market": "Pine Tree Seafood & Produce",
+            "observed_at": "2026-07-05T03:09:07+00:00",
+            "post_id": "web-pine",
+            "kind": "lobster_tier",
+            "key": "1lb_soft_shell",
+            "price": 13.5,
+            "unit": "lb",
+            "snippet": "1 lb soft",
+            "confidence": 70,
+            "gate_passed": True,
+            "source": "web",
+            "source_url": "https://pinetreeseafood.com",
+            "display_price": 13.5,
+            "display_unit": "lb",
+        },
+        {
+            "market": "Pine Tree Seafood & Produce",
+            "observed_at": "2026-07-05T03:09:07+00:00",
+            "post_id": "web-pine",
+            "kind": "lobster_tier",
+            "key": "1lb_hard_shell",
+            "price": 14.5,
+            "unit": "lb",
+            "snippet": "1 lb hard",
+            "confidence": 70,
+            "gate_passed": True,
+            "source": "web",
+            "source_url": "https://pinetreeseafood.com",
+            "display_price": 14.5,
+            "display_unit": "lb",
+        },
+    ]
+    with patch.object(board_render, "read_jsonl", return_value=rows):
+        board = build_board()
     lobster = board["sections"]["lobster"]
     assert len(lobster) <= 9
     prices = [item.get("sort_price", item["price"]) for item in lobster]
@@ -429,23 +517,29 @@ def main() -> int:
                 with tempfile.TemporaryDirectory() as td:
                     prices = Path(td) / "prices.jsonl"
                     prices.write_text(
-                        json.dumps({
-                            "market": "Pine Tree Seafood & Produce",
-                            "observed_at": datetime.now(timezone.utc).isoformat(),
-                            "post_id": "web-test",
-                            "kind": "special",
-                            "key": "salmon",
-                            "price": 8.99,
-                            "unit": "lb",
-                            "snippet": "Salmon",
-                            "confidence": 75,
-                            "gate_passed": True,
-                            "source": "web",
-                            "source_url": "https://example.com",
-                        }) + "\n",
+                        json.dumps(
+                            {
+                                "market": "Pine Tree Seafood & Produce",
+                                "observed_at": datetime.now(timezone.utc).isoformat(),
+                                "post_id": "web-test",
+                                "kind": "special",
+                                "key": "salmon",
+                                "price": 8.99,
+                                "unit": "lb",
+                                "snippet": "Salmon",
+                                "confidence": 75,
+                                "gate_passed": True,
+                                "source": "web",
+                                "source_url": "https://example.com",
+                            }
+                        )
+                        + "\n",
                         encoding="utf-8",
                     )
-                    with patch.object(state, "DATA_DIR", Path(td)), patch.object(board_render, "DATA_DIR", Path(td)):
+                    with (
+                        patch.object(state, "DATA_DIR", Path(td)),
+                        patch.object(board_render, "DATA_DIR", Path(td)),
+                    ):
                         board = get_board(demo=False)
                     assert board.get("is_demo") is not True
                     assert board["total_items"] >= 1

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Test Telegram alert formatting and sending. Bypasses normal dry-run suppression."""
+
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from send_alert import alert_lobster_drop, alert_specials_post, SECRETS
+from send_alert import SECRETS, alert_lobster_drop, alert_specials_post
 
 
 def main() -> int:
@@ -18,17 +20,18 @@ def main() -> int:
         return 1
 
     print("Token file found.")
-    
+
     # Send a lobster drop alert
     market = "Ancient Mariner Lobster Co."
     tier = "soft_shell"
     price = 6.99
     url = "https://www.facebook.com/amlobsterco/posts/test_lobster_drop"
     ts = "2026-07-05T03:00:00+00:00"
-    
+
     print(f"Sending test lobster drop alert for {market} soft_shell at ${price:.2f}/lb...")
     # Add a timestamp suffix to ensure key uniqueness during testing
     import time
+
     test_tier = f"{tier}_test_{int(time.time())}"
     ok1 = alert_lobster_drop(
         market=market,
@@ -39,7 +42,7 @@ def main() -> int:
         threshold=8.00,
         confidence=95,
     )
-    
+
     if ok1:
         print("  ✓ Lobster drop alert sent successfully.")
     else:
@@ -52,7 +55,7 @@ def main() -> int:
     ]
     test_post_id = f"test_specials_{int(time.time())}"
     url_specials = f"https://www.facebook.com/amlobsterco/posts/{test_post_id}"
-    
+
     print(f"Sending test specials post alert for {market}...")
     ok2 = alert_specials_post(
         market=market,
@@ -62,7 +65,7 @@ def main() -> int:
         special_items=specials,
         source="facebook",
     )
-    
+
     if ok2:
         print("  ✓ Specials post alert sent successfully.")
     else:
@@ -72,7 +75,10 @@ def main() -> int:
         print("All test alerts sent successfully.")
         return 0
     else:
-        print("Some alerts failed to send. Check bot configuration, chat ID, or internet connection.", file=sys.stderr)
+        print(
+            "Some alerts failed to send. Check bot configuration, chat ID, or internet connection.",
+            file=sys.stderr,
+        )
         return 1
 
 

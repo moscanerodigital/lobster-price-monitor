@@ -1,15 +1,15 @@
 [Unit]
-Description=Lobster Price Monitor scrape (no-alert dry run)
+Description=Lobster Price Monitor scrape (no Telegram alerts)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 User=erik
-WorkingDirectory=/home/erik/lobster-price-monitor
-ExecStart=/home/erik/lobster-price-monitor/scripts/run_scrape.sh
-StandardOutput=append:/home/erik/lobster-price-monitor/logs/scrape.log
-StandardError=append:/home/erik/lobster-price-monitor/logs/scrape.err
+WorkingDirectory=/opt/lobster-price-monitor
+ExecStart=/opt/lobster-price-monitor/.venv/bin/python scripts/scrape_markets.py --no-alerts
+StandardOutput=append:/opt/lobster-price-monitor/logs/scrape.stdout.log
+StandardError=append:/opt/lobster-price-monitor/logs/scrape.stderr.log
 
 [Install]
 WantedBy=multi-user.target

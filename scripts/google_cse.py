@@ -1,5 +1,7 @@
 """Google Custom Search JSON API client — fallback for FB-blocked markets."""
+
 from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -7,14 +9,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from search_queries import SEARCH_QUERIES
+
 API_KEY_FILE = Path(os.path.expanduser("~/.openclaw/secrets/google-cse.key"))
 CX_FILE = Path(os.path.expanduser("~/.openclaw/secrets/google-cse.cx"))
-
-SEARCH_QUERIES = [
-    "site:facebook.com/{handle} lobster price",
-    "site:facebook.com/{handle} specials halibut scallops",
-    "site:facebook.com/{handle} daily special",
-]
 
 
 def is_configured() -> bool:
@@ -69,15 +67,17 @@ def search_fb_posts(
             title = item.get("title", "")
             snippet = item.get("snippet", "")
             text = f"{title}. {snippet}"
-            all_results.append({
-                "market": market_name,
-                "post_id": post_id,
-                "timestamp": "",
-                "text": text,
-                "url": link,
-                "source": "google_cse",
-                "source_quality": 0.7,
-            })
+            all_results.append(
+                {
+                    "market": market_name,
+                    "post_id": post_id,
+                    "timestamp": "",
+                    "text": text,
+                    "url": link,
+                    "source": "google_cse",
+                    "source_quality": 0.7,
+                }
+            )
             if len(all_results) >= num:
                 break
 

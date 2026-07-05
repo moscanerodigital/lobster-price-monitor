@@ -16,7 +16,7 @@ Tracks live lobster prices and daily-specials posts from 9 Maine coastal market 
 | SoPo Seafood Market & Raw Bar | South Portland | FB |
 | Five Islands Lobster Co. | Georgetown | FB |
 
-**Note:** 6 of 9 market sources post only to Facebook. Meta's anti-scrape policy blocks unauthenticated pulls on public pages. The 3 markets with structured web catalogs (Pine Tree, Harbor Fish lobster, Harbor Fish oysters) work today without authentication. To unlock the FB-only markets, export your Facebook session cookies and drop them at `~/.openclaw/secrets/facebook-cookies.json` (instructions in `RALPH.md` §Pitfalls).
+**Note:** 6 of 9 market sources post only to Facebook. Meta's anti-scrape policy blocks unauthenticated pulls on public pages. The 3 markets with structured web catalogs (Pine Tree, Harbor Fish lobster, Harbor Fish oysters) work today without authentication. To unlock the FB-only markets, export your Facebook session cookies and drop them at `~/.openclaw/secrets/facebook-cookies.json` (see [setup_fb_cookies.md](setup_fb_cookies.md)).
 
 ## Quick start
 
@@ -25,13 +25,15 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Mac mini / Chromebox install, scrape,
 ```bash
 bash scripts/install.sh
 bash scripts/dry_run.sh                    # scrape --no-alerts + board.html
-.venv/bin/python scripts/verify_aaa_gate.py
+make verify                                # unit tests + AAA gate (auto-seeds CI fixtures if needed)
 .venv/bin/python scripts/health_check.py
-.venv/bin/python scripts/serve_board.py    # http://127.0.0.1:8765/board.html
+make serve                                 # http://127.0.0.1:8765/board.html (JSONL data not exposed)
 .venv/bin/python scripts/board.py --html --open
 ```
 
 **Telegram is off by default** — pass `--alerts` to `scrape_markets.py` only when approved.
+
+The board server only serves `board.html`; requests for `prices.jsonl` and other data files return 403.
 
 ## Architecture
 
@@ -42,16 +44,21 @@ scripts/
 ├── parse_web.py         # WooCommerce HTML parser
 ├── quality_gate.py      # Source quality + confidence + plausibility gates
 ├── send_alert.py        # Telegram alerts (deduped, structured specials)
+├── secrets.py           # FB cookies + Telegram chat ID loading
+├── market_names.py      # Canonical short market display names
+├── search_queries.py    # Shared FB search query templates
 ├── specials.py          # Query CLI for gated specials
 ├── markets.py           # Configured market/source roster
 ├── board.py             # Seafood chalkboard display (terminal + HTML)
 ├── board_render.py      # Board rendering engine
+├── serve_board.py       # Hardened static board HTTP server
+├── health_check.py      # Readiness report (--log for daily snapshots)
 ├── state.py             # JSONL read-or-bootstrap helpers
-├── test_parse.py        # 25 unit tests for parse_prices
-├── test_parse_web.py    # Web catalog parser tests
-├── test_quality_gate.py # AAA gate tests
-└── verify_completion.sh # AC verifier (portable)
+├── test_*.py            # Unit and gate tests
+└── verify_*.py          # AAA / B+ / production gate verifiers
 ```
+
+CI runs `make verify-ci` on push via GitHub Actions (`.github/workflows/verify.yml`).
 
 Per-run pipeline:
 1. For each market, try FB public page (with optional cookies). Fallback chain: Google CSE → DuckDuckGo (specials-aware queries).
@@ -104,7 +111,7 @@ Per-lb oyster prices (common in wholesale) are converted to per-dozen equivalent
 
 ## Cron
 
-Set up via `cronjob` MCP on the host. Recommended cadence:
+See [DEPLOYMENT.md](DEPLOYMENT.md) for launchd, systemd, and cron examples. Recommended cadence:
 - **Weekdays:** 4×/day (07:00, 11:00, 15:00, 19:00 ET)
 - **Weekends:** 2×/day (09:00, 17:00 ET)
 

@@ -1,4 +1,5 @@
 """State helpers — read-or-bootstrap JSONL files (preflight pitfall: never crash on missing file)."""
+
 from __future__ import annotations
 
 import json
@@ -40,57 +41,6 @@ def price_dedupe_key(row: dict) -> tuple:
     )
 
 
-def append_price_deduped(row: dict) -> bool:
-    """Append to prices.jsonl only if an identical row is not already present.
-
-    Returns True if the row was written, False if skipped as duplicate.
-    """
-    existing = {price_dedupe_key(r) for r in read_jsonl("prices.jsonl")}
-    key = price_dedupe_key(row)
-    if key in existing:
-        return False
-    append_jsonl("prices.jsonl", row)
-    existing.add(key)
-    return True
-
-
-def compact_jsonl(
-    name: str,
-    *,
-    key_fn: Callable[[dict], tuple] | None = None,
-    gate_passed_only: bool = False,
-) -> int:
-    """Rewrite JSONL keeping only the latest row per dedupe key. Returns rows kept."""
-    rows = read_jsonl(name)
-    if gate_passed_only:
-        rows = [r for r in rows if r.get("gate_passed") is not False]
-
-    def _key(row: dict) -> tuple:
-        if key_fn is not None:
-            return key_fn(row)
-        return (
-            row.get("market", ""),
-            row.get("kind", ""),
-            row.get("key", ""),
-        )
-
-    latest: dict[tuple, dict] = {}
-    for row in rows:
-        k = _key(row)
-        prev = latest.get(k)
-        if prev is None or row.get("observed_at", "") >= prev.get("observed_at", ""):
-            latest[k] = row
-
-    kept = list(latest.values())
-    kept.sort(key=lambda r: r.get("observed_at", ""))
-    _ensure_dir()
-    p = DATA_DIR / name
-    with p.open("w", encoding="utf-8") as f:
-        for row in kept:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    return len(kept)
-
-
 def read_jsonl(name: str) -> list[dict]:
     """Read all rows from a JSONL file. Returns [] if missing/empty."""
     p = DATA_DIR / name
@@ -128,15 +78,17 @@ def read_json(name: str) -> dict | None:
 
 def persist_key(row: dict) -> str:
     """Stable dedupe key for a gated price row within one scrape run."""
-    return "|".join([
-        row.get("market", ""),
-        row.get("post_id", ""),
-        row.get("kind", ""),
-        row.get("key", ""),
-        f"{float(row.get('price', 0)):.2f}",
-        row.get("unit", "lb"),
-        row.get("source", ""),
-    ])
+    return "|".join(
+        [
+            row.get("market", ""),
+            row.get("post_id", ""),
+            row.get("kind", ""),
+            row.get("key", ""),
+            f"{float(row.get('price', 0)):.2f}",
+            row.get("unit", "lb"),
+            row.get("source", ""),
+        ]
+    )
 
 
 def _stale_lobster_keys(rows: list[dict]) -> set[tuple]:
@@ -148,7 +100,14 @@ def _stale_lobster_keys(rows: list[dict]) -> set[tuple]:
 
     stale: set[tuple] = set()
     legacy = {
-        "hard_shell", "soft_shell", "chicks", "1lb", "1.25lb", "1.5lb", "1.75lb", "2lb_plus",
+        "hard_shell",
+        "soft_shell",
+        "chicks",
+        "1lb",
+        "1.25lb",
+        "1.5lb",
+        "1.75lb",
+        "2lb_plus",
     }
     for row in rows:
         if row.get("kind") != "lobster_tier":
@@ -191,11 +150,17 @@ def compact_prices_jsonl(*, min_confidence: int = 0) -> int:
     stale = _stale_lobster_keys(compacted)
     if stale:
         compacted = [
-            r for r in compacted
+            r
+            for r in compacted
             if (r.get("market", ""), r.get("kind", ""), r.get("key", "")) not in stale
         ]
     compacted.sort(
-        key=lambda r: (r.get("observed_at", ""), r.get("market", ""), r.get("kind", ""), r.get("key", "")),
+        key=lambda r: (
+            r.get("observed_at", ""),
+            r.get("market", ""),
+            r.get("kind", ""),
+            r.get("key", ""),
+        ),
     )
     p = DATA_DIR / "prices.jsonl"
     _ensure_dir()
@@ -223,8 +188,33 @@ def append_jsonl_deduped(
 
 
 def seen_post_ids(name: str, market: str) -> set[str]:
-    """Return the set of (market, post_id) pairs already in a JSONL file (read-or-bootstrap)."""
+    """Return the set of post_ids already in a JSONL file for a market."""
     return {r["post_id"] for r in read_jsonl(name) if r.get("market") == market}
+
+
+def build_history_post_index(rows: list[dict] | None = None) -> dict[str, set[str]]:
+    """Build market → post_id index from history rows (single read per scrape run)."""
+    if rows is None:
+        rows = read_jsonl("history.jsonl")
+    index: dict[str, set[str]] = {}
+    for row in rows:
+        market = row.get("market", "")
+        post_id = row.get("post_id")
+        if market and post_id:
+            index.setdefault(market, set()).add(str(post_id))
+    return index
+
+
+def count_passed_rows_by_market(rows: list[dict] | None = None) -> dict[str, int]:
+    """Count gate-passed price rows per market."""
+    if rows is None:
+        rows = read_jsonl("prices.jsonl")
+    counts: dict[str, int] = {}
+    for row in rows:
+        if row.get("gate_passed", True):
+            market = row.get("market", "")
+            counts[market] = counts.get(market, 0) + 1
+    return counts
 
 
 def recent_history_posts(
@@ -236,7 +226,8 @@ def recent_history_posts(
     """Return newest history posts for a market within max_age_days (FB fallback)."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     rows = [
-        r for r in read_jsonl("history.jsonl")
+        r
+        for r in read_jsonl("history.jsonl")
         if r.get("market") == market
         and r.get("source") in ("facebook", "facebook_search", "reference")
         and r.get("post_id")
@@ -291,25 +282,25 @@ def last_web_specials(market: str) -> set[tuple[str, float, str]]:
     if not market_rows:
         return set()
     latest = market_rows[-1]
-    return {
-        (s["key"], float(s["price"]), s["unit"])
-        for s in latest.get("specials", [])
-    }
+    return {(s["key"], float(s["price"]), s["unit"]) for s in latest.get("specials", [])}
 
 
 def save_web_snapshot(market: str, specials: list[dict]) -> None:
     """Persist current web catalog special rows for diff alerting."""
-    append_jsonl("web-snapshots.jsonl", {
-        "market": market,
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "specials": specials,
-    })
+    append_jsonl(
+        "web-snapshots.jsonl",
+        {
+            "market": market,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "specials": specials,
+        },
+    )
 
 
 def rotate_state_files(max_days: int = 90) -> None:
     """Rotate jsonl state files, dropping rows older than max_days."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_days)
-    
+
     # Files and their corresponding timestamp fields
     targets = [
         ("history.jsonl", ["timestamp", "observed_at"]),
@@ -318,7 +309,7 @@ def rotate_state_files(max_days: int = 90) -> None:
         ("alerts_sent.jsonl", ["observed_at", "ts"]),
         ("web-snapshots.jsonl", ["ts"]),
     ]
-    
+
     for filename, fields in targets:
         p = DATA_DIR / filename
         if not p.exists():
@@ -334,7 +325,7 @@ def rotate_state_files(max_days: int = 90) -> None:
             if not ts_str:
                 kept.append(r)
                 continue
-            
+
             s = ts_str.replace("Z", "+00:00")
             try:
                 dt = datetime.fromisoformat(s)
@@ -344,7 +335,7 @@ def rotate_state_files(max_days: int = 90) -> None:
                     kept.append(r)
             except ValueError:
                 kept.append(r)
-                
+
         _ensure_dir()
         with p.open("w", encoding="utf-8") as f_out:
             for r in kept:
