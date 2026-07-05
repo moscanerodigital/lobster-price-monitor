@@ -1,0 +1,95 @@
+{
+  "updated_at": "2026-07-05T12:00:00+00:00",
+  "markets": [
+    {
+      "market": "Ancient Mariner Lobster Co.",
+      "name": "Ancient Mariner Lobster Co.",
+      "posts_fetched": 1,
+      "passed_rows": 1,
+      "cumulative_passed_rows": 1,
+      "status": "live",
+      "blocker": null,
+      "source_used": "facebook"
+    },
+    {
+      "market": "Two Tides Seafood",
+      "name": "Two Tides Seafood",
+      "posts_fetched": 1,
+      "passed_rows": 1,
+      "cumulative_passed_rows": 1,
+      "status": "live",
+      "blocker": null,
+      "source_used": "facebook"
+    },
+    {
+      "market": "Scarborough Fish & Lobster",
+      "name": "Scarborough Fish & Lobster",
+      "posts_fetched": 1,
+      "passed_rows": 1,
+      "cumulative_passed_rows": 1,
+      "status": "live",
+      "blocker": null,
+      "source_used": "facebook_search"
+    },
+    {
+      "market": "Pine Tree Seafood & Produce",
+      "name": "Pine Tree Seafood & Produce",
+      "posts_fetched": 1,
+      "passed_rows": 2,
+      "cumulative_passed_rows": 2,
+      "status": "live",
+      "blocker": null,
+      "source_used": "web"
+    },
+    {
+      "market": "Harbor Fish Market (Lobster)",
+      "name": "Harbor Fish Market (Lobster)",
+      "posts_fetched": 1,
+      "passed_rows": 2,
+      "cumulative_passed_rows": 2,
+      "status": "live",
+      "blocker": null,
+      "source_used": "web"
+    },
+    {
+      "market": "Harbor Fish Market (Oysters)",
+      "name": "Harbor Fish Market (Oysters)",
+      "posts_fetched": 1,
+      "passed_rows": 1,
+      "cumulative_passed_rows": 1,
+      "status": "live",
+      "blocker": null,
+      "source_used": "web"
+    },
+    {
+      "market": "Free Range Fish & Lobster",
+      "name": "Free Range Fish & Lobster",
+      "posts_fetched": 1,
+      "passed_rows": 1,
+      "cumulative_passed_rows": 1,
+      "status": "live",
+      "blocker": null,
+      "source_used": "facebook_search"
+    },
+    {
+      "market": "SoPo Seafood Market & Raw Bar",
+      "name": "SoPo Seafood Market & Raw Bar",
+      "posts_fetched": 1,
+      "passed_rows": 1,
+      "cumulative_passed_rows": 1,
+      "status": "live",
+      "blocker": null,
+      "source_used": "facebook_search"
+    },
+    {
+      "market": "Five Islands Lobster Co.",
+      "name": "Five Islands Lobster Co.",
+      "posts_fetched": 1,
+      "passed_rows": 0,
+      "cumulative_passed_rows": 0,
+      "status": "partial",
+      "blocker": "reference_menu:no_live_prices",
+      "source_used": "reference"
+    }
+  ]
+}
