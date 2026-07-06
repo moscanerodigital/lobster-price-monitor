@@ -173,6 +173,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 |------|---------|
 | Host status (scheduler, health, scrape age) | `make status-host` |
 | Host auto-recovery (reload serve/scrape, trigger scrape) | `make recover-host` |
+| Scheduler redeploy (tier-3 uninstall + reinstall) | `make redeploy-host` |
 | Upgrade in place (git pull + deps + scheduler reload) | `make upgrade-host` |
 | Health check | `.venv/bin/python scripts/health_check.py` |
 | Health log (daily) | `.venv/bin/python scripts/health_check.py --log` |
@@ -257,6 +258,23 @@ bash scripts/watchdog_host.sh --recover --deep-recover --notify
 
 Ops watchdog units default to `LOBSTER_WATCHDOG_DEEP_RECOVER=1` (tier-2 `upgrade_host` after tier-1 recovery). Failure streak tracked in `data/host-health.jsonl`; escalation Telegram sent after 3 consecutive failures in 48h (`LOBSTER_WATCHDOG_ESCALATE_AFTER` to override). `status_host.sh --json` reports `watchdog_health.consecutive_failures`.
 
+### Scheduler redeploy (Gate D Wave 13)
+
+When tier-2 upgrade still leaves the host degraded, tier-3 redeploys schedulers:
+
+```bash
+# Preview redeploy path
+bash scripts/redeploy_host.sh --dry-run
+
+# Tier-3 via recovery (after tier-1 + tier-2)
+bash scripts/recover_host.sh --dry-run --deep --redeploy
+
+# Watchdog with full recovery ladder
+bash scripts/watchdog_host.sh --recover --deep-recover --redeploy-recover --notify
+```
+
+Ops watchdog units default to `LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1` (tier-3 `redeploy_host` after tier-2). `status_host.sh --json` reports `units.watchdog_redeploy_enabled`.
+
 ### Host auto-recovery (Gate D Wave 10)
 
 Status-driven remediation when the host is degraded:
@@ -317,6 +335,7 @@ Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --
 | `make demote-ops` | Roll back ops scheduler to dry-run (no live alerts) |
 | `make teardown-host` | Full teardown: demote ops if loaded → uninstall all schedulers |
 | `make upgrade-host` | In-place upgrade: pull, refresh deps, reload schedulers |
+| `make redeploy-host` | Tier-3 scheduler redeploy: uninstall + reinstall + re-promote ops |
 | `make status-host` | Read-only host diagnostics (scheduler, health, scrape age) |
 | `make recover-host` | Host auto-recovery for degraded states |
 | `make watchdog-host` | Host watchdog check (add `--notify` for Telegram alert) |

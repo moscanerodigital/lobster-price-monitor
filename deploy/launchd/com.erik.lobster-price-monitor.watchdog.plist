@@ -20,6 +20,8 @@
     <string>1</string>
     <key>LOBSTER_WATCHDOG_DEEP_RECOVER</key>
     <string>1</string>
+    <key>LOBSTER_WATCHDOG_REDEPLOY_RECOVER</key>
+    <string>1</string>
   </dict>
 
   <key>WorkingDirectory</key>

@@ -18,6 +18,7 @@ from recover_actions import (  # noqa: E402
     action_labels,
     plan_deep_recovery_actions,
     plan_recovery_actions,
+    plan_tier3_recovery_actions,
 )
 from watchdog_alert import alert_host_escalation, alert_host_recovery  # noqa: E402
 
@@ -34,7 +35,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_recover_host_dry_run_exits_zero() -> None:
     proc = _run("--dry-run")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "Gate D Wave 12 host recovery" in proc.stdout
+    assert "Gate D Wave 13 host recovery" in proc.stdout
 
 
 def test_recover_host_help() -> None:
@@ -109,16 +110,35 @@ def test_plan_deep_recovery_actions_still_degraded() -> None:
     assert actions == ["upgrade_host"]
 
 
+def test_plan_tier3_recovery_actions_still_degraded() -> None:
+    status = {
+        "status": "degraded",
+        "scheduler_mode": "ops",
+        "scrape": {"stale": True},
+        "health": {"status": "ready"},
+        "units": {"serve_active": True},
+    }
+    actions = plan_tier3_recovery_actions(status, tier2_ran=True, still_degraded=True)
+    assert actions == ["redeploy_host"]
+
+
 def test_recover_host_dry_run_deep() -> None:
     proc = _run("--dry-run", "--deep")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Deep recovery enabled" in proc.stdout
 
 
+def test_recover_host_dry_run_redeploy() -> None:
+    proc = _run("--dry-run", "--deep", "--redeploy")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "Redeploy recovery enabled" in proc.stdout
+
+
 def test_action_labels_known_codes() -> None:
     assert action_labels("reload_serve") == "reload serve unit"
     assert action_labels("trigger_scrape") == "run confirmation scrape"
     assert "upgrade_host" in action_labels("upgrade_host")
+    assert "redeploy schedulers" in action_labels("redeploy_host")
 
 
 def test_alert_host_escalation_dry_run() -> None:
@@ -139,6 +159,7 @@ def test_alert_host_escalation_dry_run() -> None:
             consecutive_failures=3,
             recovery_attempted=True,
             deep_recovery_attempted=True,
+            redeploy_recovery_attempted=True,
             dry_run=True,
         )
 
@@ -182,7 +203,7 @@ def test_deploy_host_dry_run_recover() -> None:
     )
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Host recovery" in proc.stdout
-    assert "recover_host.sh" in proc.stdout or "Gate D Wave 12 host recovery" in proc.stdout
+    assert "recover_host.sh" in proc.stdout or "Gate D Wave 13 host recovery" in proc.stdout
 
 
 def test_deploy_host_recover_and_watchdog_mutually_exclusive() -> None:
@@ -218,6 +239,17 @@ def test_watchdog_host_dry_run_deep_recover() -> None:
     assert "deep recovery" in proc.stdout.lower()
 
 
+def test_watchdog_host_dry_run_redeploy_recover() -> None:
+    proc = subprocess.run(
+        ["bash", str(WATCHDOG_SCRIPT), "--dry-run", "--recover", "--redeploy-recover"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "redeploy recovery" in proc.stdout.lower()
+
+
 def main() -> int:
     tests = [
         test_recover_host_dry_run_exits_zero,
@@ -226,7 +258,9 @@ def main() -> int:
         test_plan_recovery_actions_serve_not_active,
         test_plan_recovery_actions_ops_missing_watchdog,
         test_plan_deep_recovery_actions_still_degraded,
+        test_plan_tier3_recovery_actions_still_degraded,
         test_recover_host_dry_run_deep,
+        test_recover_host_dry_run_redeploy,
         test_action_labels_known_codes,
         test_alert_host_escalation_dry_run,
         test_alert_host_recovery_dry_run,
@@ -234,6 +268,7 @@ def main() -> int:
         test_deploy_host_recover_and_watchdog_mutually_exclusive,
         test_watchdog_host_dry_run_recover_flag,
         test_watchdog_host_dry_run_deep_recover,
+        test_watchdog_host_dry_run_redeploy_recover,
     ]
     failed = 0
     for test in tests:

@@ -88,6 +88,7 @@ def record_outcome(
     *,
     recovery_attempted: bool = False,
     deep_recovery_attempted: bool = False,
+    redeploy_recovery_attempted: bool = False,
     recovered: bool = False,
     escalated: bool = False,
 ) -> int:
@@ -119,6 +120,7 @@ def record_outcome(
             "exit_code": exit_code,
             "recovery_attempted": recovery_attempted,
             "deep_recovery_attempted": deep_recovery_attempted,
+            "redeploy_recovery_attempted": redeploy_recovery_attempted,
             "consecutive_failures": new_streak,
         },
     )
@@ -135,6 +137,7 @@ def main() -> int:
     parser.add_argument("--exit-code", type=int, default=0)
     parser.add_argument("--recovery-attempted", action="store_true")
     parser.add_argument("--deep-recovery-attempted", action="store_true")
+    parser.add_argument("--redeploy-recovery-attempted", action="store_true")
     parser.add_argument("--recovered", action="store_true")
     parser.add_argument("--escalated", action="store_true")
     args = parser.parse_args()
@@ -144,6 +147,7 @@ def main() -> int:
             args.exit_code,
             recovery_attempted=args.recovery_attempted,
             deep_recovery_attempted=args.deep_recovery_attempted,
+            redeploy_recovery_attempted=args.redeploy_recovery_attempted,
             recovered=args.recovered,
             escalated=args.escalated,
         )

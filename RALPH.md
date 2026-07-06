@@ -119,6 +119,8 @@ $LOBSTER_ROOT/
 
 **Gate D Wave 12 (2026-07-06):** Recovery escalation — `scripts/host_health_state.py` tracks consecutive watchdog failures in `data/host-health.jsonl`; tier-2 deep recovery runs `upgrade_host.sh` when tier-1 leaves host degraded (`LOBSTER_WATCHDOG_DEEP_RECOVER=1` default on ops watchdog); escalation Telegram (`kind=host_escalation`) after threshold (default 3 failures in 48h); `status_host.sh` reports `watchdog_health`; `verify_ops_gate.py` verifies deep recovery enabled.
 
+**Gate D Wave 13 (2026-07-06):** Tier-3 scheduler redeploy recovery — `scripts/redeploy_host.sh` (uninstall + reinstall schedulers, re-promote ops, preserves `data/`); tier-3 runs after tier-2 when host remains degraded (`LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1` default on ops watchdog); `recover_host.sh --redeploy-recover`; `deploy_host.sh --redeploy`; `make redeploy-host`; `status_host.sh` reports `units.watchdog_redeploy_enabled`; `verify_ops_gate.py` verifies redeploy recovery enabled.
+
 **Deploy gate criteria:** `make verify-core` passes · `data/board.html` exists · `health_check.py` passes · dry-run scheduler loaded (ops **not** loaded) · serve unit running. CI: `--skip-scheduling --skip-verify-suite`.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
@@ -136,7 +138,7 @@ $LOBSTER_ROOT/
 | Harbor Fish | soft $14.30 · hard $15.30 | 70 | Web + FB |
 | Five Islands | — (partial) | — | No gated $/lb; see `setup_fb_cookies.md` |
 
-**Ops:** `make deploy-host` · `make bootstrap-host` · `make upgrade-host` · `make status-host` · `make watchdog-host` · `make recover-host` · `make install-scheduler` · `make teardown-host` · `make uninstall-scheduler` · `make verify-deploy` · `make promote-ops` · `make demote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
+**Ops:** `make deploy-host` · `make bootstrap-host` · `make upgrade-host` · `make redeploy-host` · `make status-host` · `make watchdog-host` · `make recover-host` · `make install-scheduler` · `make teardown-host` · `make uninstall-scheduler` · `make verify-deploy` · `make promote-ops` · `make demote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
 
 ## Project complete
 
