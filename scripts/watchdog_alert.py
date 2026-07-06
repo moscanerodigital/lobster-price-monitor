@@ -12,8 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from send_alert import send_telegram
 import state
+from send_alert import send_telegram
 
 DEDUPE_HOURS = 6
 
