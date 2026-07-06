@@ -103,7 +103,8 @@ def test_cap_specials_preserves_all_markets():
     capped = _cap_specials_by_market(items)
     markets_shown = {item["market"] for item in capped}
     assert markets_shown == {"Market A", "Market B", "Market C", "Market D", "Market E"}
-    assert len(capped) == 6
+    # 5 markets × 4 per market fits under _MAX_SPECIALS_TOTAL (24)
+    assert len(capped) == 20
 
 
 def main() -> int:

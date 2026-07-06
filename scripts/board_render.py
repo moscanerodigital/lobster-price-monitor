@@ -683,8 +683,8 @@ def _collapse_lobster_headlines(items: list[dict]) -> list[dict]:
 
 _MAX_SECTION_ITEMS = 4
 _MAX_LOBSTER_HEADLINES = 9
-_MAX_SPECIALS_PER_MARKET = 2
-_MAX_SPECIALS_TOTAL = 6
+_MAX_SPECIALS_PER_MARKET = 10
+_MAX_SPECIALS_TOTAL = 36
 
 _BLOCKER_LABELS: dict[str, str] = {
     "no_posts_from_facebook": "Facebook feed unavailable",
