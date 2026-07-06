@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from board_render import _cap_specials_by_market
+from board_render import _cap_specials_by_market, _is_clean_special_row, _special_display_label
 from parse_prices import is_specials_post, parse_post
 from parse_web import parse_web_catalog
 from quality_gate import gate_rows
@@ -86,6 +86,32 @@ def test_fb_specials_post_parsing():
     assert ("special", "lobster_roll", 22.0, "ea") in special_rows
 
 
+def test_is_clean_special_row_rejects_fb_mashup():
+    sopo_row = {
+        "kind": "special",
+        "key": "haddock",
+        "snippet": "50 /lb.\n• Gulf of Maine Haddock Fillet: $11.99 /lb.\n• Maine Crab Meat,",
+    }
+    assert _is_clean_special_row(sopo_row) is False
+
+
+def test_is_clean_special_row_accepts_catalog_and_web_snippets():
+    assert _is_clean_special_row(
+        {"catalog_title": "Fresh Medium Haddock Fillet", "snippet": "ignored"}
+    )
+    assert _is_clean_special_row(
+        {"snippet": "Fresh halibut $18.99/lb", "key": "halibut"}
+    )
+    assert _is_clean_special_row({"snippet": "Lobster Roll", "key": "lobster_roll"})
+
+
+def test_special_display_label_strips_price_and_fresh_prefix():
+    row = {"snippet": "Fresh halibut $18.99/lb", "key": "halibut"}
+    assert _special_display_label(row, "Halibut") == "halibut"
+    catalog = {"catalog_title": "Fresh Medium Haddock Fillet", "key": "haddock"}
+    assert _special_display_label(catalog, "Haddock") == "Medium Haddock Fillet"
+
+
 def test_cap_specials_preserves_all_markets():
     items = []
     for i, market in enumerate(("Market A", "Market B", "Market C", "Market D", "Market E")):
@@ -112,6 +138,9 @@ def main() -> int:
         test_harbor_fish_web_specials_gate,
         test_pine_tree_web_specials,
         test_fb_specials_post_parsing,
+        test_is_clean_special_row_rejects_fb_mashup,
+        test_is_clean_special_row_accepts_catalog_and_web_snippets,
+        test_special_display_label_strips_price_and_fresh_prefix,
         test_cap_specials_preserves_all_markets,
     ]
     failures = 0

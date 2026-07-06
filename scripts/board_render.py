@@ -252,7 +252,34 @@ def _is_clean_special_row(row: dict) -> bool:
         return False
     if re.search(r"🐟|🐚|🦞", snippet):
         return False
+    if "\n" in snippet:
+        return False
+    if "•" in snippet or "·" in snippet:
+        return False
+    if snippet.rstrip().endswith(","):
+        return False
+    # Clipped prior item (e.g. "50 /lb." before a bullet list) — digits before /lb
+    # must not immediately follow $ (legitimate "$18.99/lb" snippets stay clean).
+    if re.search(r"(?:^|[\s•])(?:\d+(?:\.\d+)?)\s*/\s*lb\.?", snippet, re.I):
+        return False
     return True
+
+
+def _special_display_label(row: dict, fallback: str) -> str:
+    """Customer-facing special name — prefer catalog title, else clean snippet/key."""
+    if row.get("catalog_title"):
+        title = str(row["catalog_title"])
+    else:
+        title = str(row.get("snippet") or fallback)
+    title = title.split("(")[0].strip()
+    title = re.sub(r"^[•·\-]\s*", "", title).strip()
+    colon_match = re.match(r"^(.+?):\s*\$", title)
+    if colon_match:
+        title = colon_match.group(1).strip()
+    title = re.sub(r"\s*\$[\d.,]+(?:\s*(?:/|per)\s*\w+)?\s*$", "", title, flags=re.I).strip()
+    if title.lower().startswith("fresh "):
+        title = title[6:].strip()
+    return title or fallback
 
 
 def _is_test_row(row: dict) -> bool:
@@ -1007,10 +1034,7 @@ def build_board(
         provenance = _provenance_note(r)
         special_label = label
         if bucket == "special":
-            title = r.get("catalog_title") or r.get("snippet") or label
-            special_label = str(title).split("(")[0].strip()
-            if special_label.lower().startswith("fresh "):
-                special_label = special_label[6:].strip()
+            special_label = _special_display_label(r, label)
         item = {
             "label": label,
             "row_primary": (
