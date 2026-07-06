@@ -33,7 +33,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_watchdog_host_dry_run_exits_zero() -> None:
     proc = _run("--dry-run")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "Gate D Wave 13 host watchdog" in proc.stdout
+    assert "Gate D Wave 14 host watchdog" in proc.stdout
 
 
 def test_watchdog_host_dry_run_notify_would_alert() -> None:
@@ -244,6 +244,12 @@ def test_watchdog_host_dry_run_deep_recover() -> None:
     assert "deep recovery" in proc.stdout.lower()
 
 
+def test_watchdog_host_dry_run_rebuild_recover() -> None:
+    proc = _run("--dry-run", "--recover", "--rebuild-recover")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "rebuild recovery" in proc.stdout.lower()
+
+
 def test_alert_host_escalation_dry_run() -> None:
     status = {
         "status": "degraded",
@@ -321,6 +327,7 @@ def main() -> int:
         test_watchdog_host_help,
         test_watchdog_host_dry_run_recover,
         test_watchdog_host_dry_run_deep_recover,
+        test_watchdog_host_dry_run_rebuild_recover,
         test_build_watchdog_reasons_stale_scrape,
         test_alert_host_watchdog_dedupes_without_force,
         test_alert_host_watchdog_force_bypasses_dedupe,

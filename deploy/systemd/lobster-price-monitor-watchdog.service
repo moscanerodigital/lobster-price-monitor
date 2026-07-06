@@ -11,6 +11,7 @@ Environment=LOBSTER_WATCHDOG_ALERTS=1
 Environment=LOBSTER_WATCHDOG_RECOVER=1
 Environment=LOBSTER_WATCHDOG_DEEP_RECOVER=1
 Environment=LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1
+Environment=LOBSTER_WATCHDOG_REBUILD_RECOVER=1
 ExecStart=LOBSTER_ROOT/scripts/watchdog_host.sh --notify
 StandardOutput=append:LOBSTER_ROOT/logs/watchdog.stdout.log
 StandardError=append:LOBSTER_ROOT/logs/watchdog.stderr.log

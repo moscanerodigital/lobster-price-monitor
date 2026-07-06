@@ -89,7 +89,7 @@ def test_deploy_host_dry_run_watchdog() -> None:
     proc = _run("--dry-run", "--watchdog")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Host watchdog" in proc.stdout
-    assert "watchdog_host.sh" in proc.stdout or "Gate D Wave 13 host watchdog" in proc.stdout
+    assert "watchdog_host.sh" in proc.stdout or "Gate D Wave 14 host watchdog" in proc.stdout
     assert "Phase 1: bootstrap" not in proc.stdout
 
 
@@ -97,7 +97,7 @@ def test_deploy_host_dry_run_recover() -> None:
     proc = _run("--dry-run", "--recover")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Host recovery" in proc.stdout
-    assert "recover_host.sh" in proc.stdout or "Gate D Wave 13 host recovery" in proc.stdout
+    assert "recover_host.sh" in proc.stdout or "Gate D Wave 14 host recovery" in proc.stdout
     assert "Phase 1: bootstrap" not in proc.stdout
 
 
@@ -133,6 +133,20 @@ def test_deploy_host_redeploy_and_upgrade_mutually_exclusive() -> None:
     assert "mutually exclusive" in proc.stderr.lower() or "mutually exclusive" in proc.stdout.lower()
 
 
+def test_deploy_host_dry_run_rebuild() -> None:
+    proc = _run("--dry-run", "--rebuild", "--skip-health")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "Host rebuild" in proc.stdout
+    assert "rebuild_host.sh" in proc.stdout or "Gate D Wave 14 host rebuild" in proc.stdout
+    assert "Phase 1: bootstrap" not in proc.stdout
+
+
+def test_deploy_host_rebuild_and_upgrade_mutually_exclusive() -> None:
+    proc = _run("--rebuild", "--upgrade")
+    assert proc.returncode == 1
+    assert "mutually exclusive" in proc.stderr.lower() or "mutually exclusive" in proc.stdout.lower()
+
+
 def test_deploy_host_recover_and_status_mutually_exclusive() -> None:
     proc = _run("--recover", "--status")
     assert proc.returncode == 1
@@ -150,12 +164,14 @@ def main() -> int:
         test_deploy_host_dry_run_teardown_purge_files,
         test_deploy_host_dry_run_upgrade,
         test_deploy_host_dry_run_redeploy,
+        test_deploy_host_dry_run_rebuild,
         test_deploy_host_dry_run_status,
         test_deploy_host_dry_run_watchdog,
         test_deploy_host_dry_run_recover,
         test_deploy_host_teardown_and_upgrade_mutually_exclusive,
         test_deploy_host_status_and_upgrade_mutually_exclusive,
         test_deploy_host_redeploy_and_upgrade_mutually_exclusive,
+        test_deploy_host_rebuild_and_upgrade_mutually_exclusive,
         test_deploy_host_watchdog_and_status_mutually_exclusive,
         test_deploy_host_recover_and_status_mutually_exclusive,
     ]
