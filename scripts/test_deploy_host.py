@@ -55,6 +55,14 @@ def test_deploy_host_invalid_phase() -> None:
     assert "invalid" in proc.stderr.lower() or "invalid" in proc.stdout.lower()
 
 
+def test_deploy_host_dry_run_teardown() -> None:
+    proc = _run("--dry-run", "--teardown")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "Host teardown" in proc.stdout
+    assert "teardown_host.sh" in proc.stdout or "scheduler uninstall" in proc.stdout
+    assert "Phase 1: bootstrap" not in proc.stdout
+
+
 def main() -> int:
     tests = [
         test_deploy_host_dry_run_phase1,
@@ -62,6 +70,7 @@ def main() -> int:
         test_deploy_host_dry_run_phase_all_with_promote_includes_phase3,
         test_deploy_host_dry_run_propagates_to_subscripts,
         test_deploy_host_invalid_phase,
+        test_deploy_host_dry_run_teardown,
     ]
     failed = 0
     for test in tests:

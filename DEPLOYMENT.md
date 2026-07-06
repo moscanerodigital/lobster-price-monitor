@@ -38,6 +38,25 @@ make deploy-host -- --promote                               # run phases 1–2�
 
 **Secrets preflight:** `bash scripts/preflight_secrets.sh` (add `--require-telegram` before ops promotion).
 
+## Host teardown (Gate D Wave 6)
+
+Remove all schedulers from a host (does not delete `.venv`, `data/`, or the repo):
+
+```bash
+bash scripts/teardown_host.sh --dry-run       # preview
+make teardown-host                             # demote ops if loaded → uninstall all
+make uninstall-scheduler                       # uninstall schedulers only
+bash scripts/deploy_host.sh --teardown         # same as teardown-host via orchestrator
+```
+
+| Flag | Effect |
+|------|--------|
+| `--skip-demote` | Uninstall without demoting ops first |
+| `--skip-health` | Leave health timer/agent installed |
+| `--purge-files` | Delete installed plists/units from disk after unload |
+
+After teardown, `make verify-deploy` is expected to fail (no schedulers loaded). Re-deploy with `make deploy-host`.
+
 ## Dry-run scrape (no Telegram)
 
 ```bash
