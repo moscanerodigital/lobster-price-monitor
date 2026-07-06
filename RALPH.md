@@ -111,6 +111,8 @@ $LOBSTER_ROOT/
 
 **Gate D Wave 8 (2026-07-06):** Host status and diagnostics — `scripts/status_host.sh` (scheduler mode, unit status, scrape freshness, health report, serve URLs), `deploy_host.sh --status`; `make status-host`. Read-only; exit 0 healthy, 1 degraded, 2 fatal preflight.
 
+**Gate D Wave 9 (2026-07-06):** Host watchdog alerting — `scripts/watchdog_host.sh` (status-driven Telegram on degraded/fatal), `scripts/watchdog_alert.py` (deduped alerts), optional watchdog scheduler (`--with-watchdog`), auto-installed on ops promotion; `deploy_host.sh --watchdog`; `make watchdog-host`.
+
 **Deploy gate criteria:** `make verify-core` passes · `data/board.html` exists · `health_check.py` passes · dry-run scheduler loaded (ops **not** loaded) · serve unit running. CI: `--skip-scheduling --skip-verify-suite`.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
@@ -128,7 +130,7 @@ $LOBSTER_ROOT/
 | Harbor Fish | soft $14.30 · hard $15.30 | 70 | Web + FB |
 | Five Islands | — (partial) | — | No gated $/lb; see `setup_fb_cookies.md` |
 
-**Ops:** `make deploy-host` · `make bootstrap-host` · `make upgrade-host` · `make status-host` · `make install-scheduler` · `make teardown-host` · `make uninstall-scheduler` · `make verify-deploy` · `make promote-ops` · `make demote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
+**Ops:** `make deploy-host` · `make bootstrap-host` · `make upgrade-host` · `make status-host` · `make watchdog-host` · `make install-scheduler` · `make teardown-host` · `make uninstall-scheduler` · `make verify-deploy` · `make promote-ops` · `make demote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
 
 ## Project complete
 

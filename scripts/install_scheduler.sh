@@ -8,16 +8,21 @@ LOBSTER_ROOT="${LOBSTER_ROOT:-$ROOT}"
 DRY_RUN=false
 SKIP_HEALTH=false
 SKIP_VERIFY=false
+WITH_WATCHDOG=false
+WATCHDOG_ONLY=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/install_scheduler.sh [--dry-run] [--skip-health] [--skip-verify]
+Usage: scripts/install_scheduler.sh [--dry-run] [--skip-health] [--skip-verify] [--with-watchdog] [--watchdog-only]
 
 Install dry-run scrape + serve schedulers (no Telegram alerts):
   1. Preflight venv and LOBSTER_ROOT
   2. Install scrape + serve units (launchd or systemd)
   3. Optionally install daily health-log unit
-  4. Run make verify-deploy (host)
+  4. Optionally install watchdog timer (--with-watchdog)
+  5. Run make verify-deploy (host)
+
+With --watchdog-only, install only the watchdog timer (requires --with-watchdog).
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -35,6 +40,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-verify)
       SKIP_VERIFY=true
+      shift
+      ;;
+    --with-watchdog)
+      WITH_WATCHDOG=true
+      shift
+      ;;
+    --watchdog-only)
+      WATCHDOG_ONLY=true
       shift
       ;;
     --lobster-root)
@@ -136,6 +149,26 @@ install_macos() {
   echo "macOS scheduler install complete (scrape + serve)"
 }
 
+install_watchdog_macos() {
+  local agents="${HOME}/Library/LaunchAgents"
+  local deploy="${LOBSTER_ROOT}/deploy/launchd"
+  local watchdog_src="${deploy}/com.erik.lobster-price-monitor.watchdog.plist"
+  local watchdog_plist="${agents}/com.erik.lobster-price-monitor.watchdog.plist"
+
+  if [[ ! -f "$watchdog_src" ]]; then
+    echo "ERROR: watchdog plist not found at $watchdog_src" >&2
+    exit 1
+  fi
+
+  run mkdir -p "$agents"
+  substitute_unit "$watchdog_src" "$watchdog_plist"
+  if launchctl list 2>/dev/null | grep -q "com.erik.lobster-price-monitor.watchdog$"; then
+    run launchctl unload "$watchdog_plist" || true
+  fi
+  run launchctl load "$watchdog_plist"
+  echo "macOS watchdog agent installed: $watchdog_plist"
+}
+
 install_linux_unit() {
   local src="$1"
   local name
@@ -198,6 +231,23 @@ install_linux() {
   echo "Linux scheduler install complete (scrape + serve)"
 }
 
+install_watchdog_linux() {
+  local deploy="${LOBSTER_ROOT}/deploy/systemd"
+  for src in \
+    "${deploy}/lobster-price-monitor-watchdog.service" \
+    "${deploy}/lobster-price-monitor-watchdog.timer"; do
+    if [[ ! -f "$src" ]]; then
+      echo "ERROR: watchdog unit not found at $src" >&2
+      exit 1
+    fi
+    install_linux_unit "$src"
+  done
+
+  run sudo systemctl daemon-reload
+  run sudo systemctl enable --now lobster-price-monitor-watchdog.timer
+  echo "Linux watchdog timer enabled: lobster-price-monitor-watchdog.timer"
+}
+
 verify_deploy() {
   if [[ "$SKIP_VERIFY" == true ]]; then
     echo "Skipping verify-deploy"
@@ -211,6 +261,30 @@ verify_deploy() {
 }
 
 main() {
+  if [[ "$WATCHDOG_ONLY" == true && "$WITH_WATCHDOG" != true ]]; then
+    echo "ERROR: --watchdog-only requires --with-watchdog" >&2
+    exit 1
+  fi
+
+  if [[ "$WATCHDOG_ONLY" == true ]]; then
+    echo "=== Gate D watchdog install ==="
+    preflight
+    case "$(uname -s)" in
+      Darwin)
+        install_watchdog_macos
+        ;;
+      Linux)
+        install_watchdog_linux
+        ;;
+      *)
+        echo "ERROR: install_scheduler.sh supports macOS and Linux only (got $(uname -s))" >&2
+        exit 1
+        ;;
+    esac
+    echo "=== Watchdog install succeeded ==="
+    return 0
+  fi
+
   echo "=== Gate D scheduler install (dry-run scrape + serve) ==="
   preflight
 
@@ -226,6 +300,17 @@ main() {
       exit 1
       ;;
   esac
+
+  if [[ "$WITH_WATCHDOG" == true ]]; then
+    case "$(uname -s)" in
+      Darwin)
+        install_watchdog_macos
+        ;;
+      Linux)
+        install_watchdog_linux
+        ;;
+    esac
+  fi
 
   verify_deploy
   echo "=== Scheduler install succeeded ==="

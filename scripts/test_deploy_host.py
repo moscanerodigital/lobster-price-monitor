@@ -85,6 +85,14 @@ def test_deploy_host_dry_run_status() -> None:
     assert "Phase 1: bootstrap" not in proc.stdout
 
 
+def test_deploy_host_dry_run_watchdog() -> None:
+    proc = _run("--dry-run", "--watchdog")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "Host watchdog" in proc.stdout
+    assert "watchdog_host.sh" in proc.stdout or "Gate D Wave 9 host watchdog" in proc.stdout
+    assert "Phase 1: bootstrap" not in proc.stdout
+
+
 def test_deploy_host_teardown_and_upgrade_mutually_exclusive() -> None:
     proc = _run("--teardown", "--upgrade")
     assert proc.returncode == 1
@@ -93,6 +101,12 @@ def test_deploy_host_teardown_and_upgrade_mutually_exclusive() -> None:
 
 def test_deploy_host_status_and_upgrade_mutually_exclusive() -> None:
     proc = _run("--status", "--upgrade")
+    assert proc.returncode == 1
+    assert "mutually exclusive" in proc.stderr.lower() or "mutually exclusive" in proc.stdout.lower()
+
+
+def test_deploy_host_watchdog_and_status_mutually_exclusive() -> None:
+    proc = _run("--watchdog", "--status")
     assert proc.returncode == 1
     assert "mutually exclusive" in proc.stderr.lower() or "mutually exclusive" in proc.stdout.lower()
 
@@ -108,8 +122,10 @@ def main() -> int:
         test_deploy_host_dry_run_teardown_purge_files,
         test_deploy_host_dry_run_upgrade,
         test_deploy_host_dry_run_status,
+        test_deploy_host_dry_run_watchdog,
         test_deploy_host_teardown_and_upgrade_mutually_exclusive,
         test_deploy_host_status_and_upgrade_mutually_exclusive,
+        test_deploy_host_watchdog_and_status_mutually_exclusive,
     ]
     failed = 0
     for test in tests:

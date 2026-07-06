@@ -8,24 +8,28 @@ LOBSTER_ROOT="${LOBSTER_ROOT:-$ROOT}"
 DRY_RUN=false
 SKIP_HEALTH=false
 PURGE_FILES=false
+SKIP_WATCHDOG=false
 
 DRY_RUN_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape"
 OPS_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape.ops"
 SERVE_LABEL="com.erik.lobster-price-monitor.serve"
 HEALTH_LABEL="com.erik.lobster-price-monitor.health"
+WATCHDOG_LABEL="com.erik.lobster-price-monitor.watchdog"
 DRY_RUN_SCRAPE_TIMER="lobster-price-monitor-scrape.timer"
 OPS_SCRAPE_TIMER="lobster-price-monitor-scrape.ops.timer"
 SERVE_SERVICE="lobster-price-monitor-serve.service"
 HEALTH_TIMER="lobster-price-monitor-health.timer"
+WATCHDOG_TIMER="lobster-price-monitor-watchdog.timer"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/uninstall_scheduler.sh [--dry-run] [--skip-health] [--purge-files] [--lobster-root PATH]
+Usage: scripts/uninstall_scheduler.sh [--dry-run] [--skip-health] [--skip-watchdog] [--purge-files] [--lobster-root PATH]
 
 Unload/disable all lobster-price-monitor schedulers:
   - dry-run scrape + ops scrape
   - board serve
   - daily health log (unless --skip-health)
+  - host watchdog timer (unless --skip-watchdog)
 
 With --purge-files, remove installed plists/units from the host after unload.
 
@@ -41,6 +45,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-health)
       SKIP_HEALTH=true
+      shift
+      ;;
+    --skip-watchdog)
+      SKIP_WATCHDOG=true
       shift
       ;;
     --purge-files)
@@ -106,6 +114,11 @@ uninstall_macos() {
   else
     echo "  skipping health agent (--skip-health)"
   fi
+  if [[ "$SKIP_WATCHDOG" == false ]]; then
+    unload_macos_plist "$WATCHDOG_LABEL"
+  else
+    echo "  skipping watchdog agent (--skip-watchdog)"
+  fi
 
   echo "macOS scheduler uninstall complete"
 }
@@ -142,12 +155,18 @@ uninstall_linux() {
   else
     echo "  skipping health timer (--skip-health)"
   fi
+  if [[ "$SKIP_WATCHDOG" == false ]]; then
+    disable_linux_unit "$WATCHDOG_TIMER"
+  else
+    echo "  skipping watchdog timer (--skip-watchdog)"
+  fi
 
   if [[ "$PURGE_FILES" == true ]]; then
     for unit in \
       lobster-price-monitor-scrape.service \
       lobster-price-monitor-scrape.ops.service \
-      lobster-price-monitor-health.service; do
+      lobster-price-monitor-health.service \
+      lobster-price-monitor-watchdog.service; do
       local unit_path="/etc/systemd/system/${unit}"
       if [[ -f "$unit_path" ]]; then
         run sudo rm -f "$unit_path"
@@ -169,6 +188,9 @@ post_check() {
       if [[ "$SKIP_HEALTH" == false ]]; then
         labels+=("$HEALTH_LABEL")
       fi
+      if [[ "$SKIP_WATCHDOG" == false ]]; then
+        labels+=("$WATCHDOG_LABEL")
+      fi
       local loaded
       loaded="$(launchctl list 2>/dev/null || true)"
       for label in "${labels[@]}"; do
@@ -182,6 +204,9 @@ post_check() {
       local units=("$OPS_SCRAPE_TIMER" "$DRY_RUN_SCRAPE_TIMER" "$SERVE_SERVICE")
       if [[ "$SKIP_HEALTH" == false ]]; then
         units+=("$HEALTH_TIMER")
+      fi
+      if [[ "$SKIP_WATCHDOG" == false ]]; then
+        units+=("$WATCHDOG_TIMER")
       fi
       for unit in "${units[@]}"; do
         if systemctl is-active "$unit" &>/dev/null; then
