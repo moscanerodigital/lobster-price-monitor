@@ -20,6 +20,7 @@ from recover_actions import (  # noqa: E402
     plan_recovery_actions,
     plan_tier3_recovery_actions,
     plan_tier4_recovery_actions,
+    plan_tier5_recovery_actions,
 )
 from watchdog_alert import alert_host_escalation, alert_host_recovery  # noqa: E402
 
@@ -36,7 +37,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_recover_host_dry_run_exits_zero() -> None:
     proc = _run("--dry-run")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "Gate D Wave 14 host recovery" in proc.stdout
+    assert "Gate D Wave 15 host recovery" in proc.stdout
 
 
 def test_recover_host_help() -> None:
@@ -135,6 +136,18 @@ def test_plan_tier4_recovery_actions_still_degraded() -> None:
     assert actions == ["rebuild_host"]
 
 
+def test_plan_tier5_recovery_actions_still_degraded() -> None:
+    status = {
+        "status": "degraded",
+        "scheduler_mode": "ops",
+        "scrape": {"stale": True},
+        "health": {"status": "ready"},
+        "units": {"serve_active": True},
+    }
+    actions = plan_tier5_recovery_actions(status, tier4_ran=True, still_degraded=True)
+    assert actions == ["reprovision_host"]
+
+
 def test_recover_host_dry_run_deep() -> None:
     proc = _run("--dry-run", "--deep")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
@@ -153,12 +166,19 @@ def test_recover_host_dry_run_rebuild() -> None:
     assert "Rebuild recovery enabled" in proc.stdout
 
 
+def test_recover_host_dry_run_reprovision() -> None:
+    proc = _run("--dry-run", "--deep", "--redeploy", "--rebuild", "--reprovision")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "Reprovision recovery enabled" in proc.stdout
+
+
 def test_action_labels_known_codes() -> None:
     assert action_labels("reload_serve") == "reload serve unit"
     assert action_labels("trigger_scrape") == "run confirmation scrape"
     assert "upgrade_host" in action_labels("upgrade_host")
     assert "redeploy schedulers" in action_labels("redeploy_host")
     assert "rebuild host" in action_labels("rebuild_host")
+    assert "full reprovision" in action_labels("reprovision_host")
 
 
 def test_alert_host_escalation_dry_run() -> None:
@@ -181,6 +201,7 @@ def test_alert_host_escalation_dry_run() -> None:
             deep_recovery_attempted=True,
             redeploy_recovery_attempted=True,
             rebuild_recovery_attempted=True,
+            reprovision_recovery_attempted=True,
             dry_run=True,
         )
 
@@ -224,7 +245,7 @@ def test_deploy_host_dry_run_recover() -> None:
     )
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Host recovery" in proc.stdout
-    assert "recover_host.sh" in proc.stdout or "Gate D Wave 14 host recovery" in proc.stdout
+    assert "recover_host.sh" in proc.stdout or "Gate D Wave 15 host recovery" in proc.stdout
 
 
 def test_deploy_host_recover_and_watchdog_mutually_exclusive() -> None:
@@ -282,6 +303,17 @@ def test_watchdog_host_dry_run_rebuild_recover() -> None:
     assert "rebuild recovery" in proc.stdout.lower()
 
 
+def test_watchdog_host_dry_run_reprovision_recover() -> None:
+    proc = subprocess.run(
+        ["bash", str(WATCHDOG_SCRIPT), "--dry-run", "--recover", "--reprovision-recover"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "reprovision recovery" in proc.stdout.lower()
+
+
 def main() -> int:
     tests = [
         test_recover_host_dry_run_exits_zero,
@@ -292,9 +324,11 @@ def main() -> int:
         test_plan_deep_recovery_actions_still_degraded,
         test_plan_tier3_recovery_actions_still_degraded,
         test_plan_tier4_recovery_actions_still_degraded,
+        test_plan_tier5_recovery_actions_still_degraded,
         test_recover_host_dry_run_deep,
         test_recover_host_dry_run_redeploy,
         test_recover_host_dry_run_rebuild,
+        test_recover_host_dry_run_reprovision,
         test_action_labels_known_codes,
         test_alert_host_escalation_dry_run,
         test_alert_host_recovery_dry_run,
@@ -304,6 +338,7 @@ def main() -> int:
         test_watchdog_host_dry_run_deep_recover,
         test_watchdog_host_dry_run_redeploy_recover,
         test_watchdog_host_dry_run_rebuild_recover,
+        test_watchdog_host_dry_run_reprovision_recover,
     ]
     failed = 0
     for test in tests:

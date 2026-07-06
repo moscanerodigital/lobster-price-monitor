@@ -15,11 +15,12 @@ WATCHDOG=false
 RECOVER=false
 REDEPLOY=false
 REBUILD=false
+REPROVISION=false
 PURGE_FILES=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--upgrade] [--redeploy] [--rebuild] [--status] [--watchdog] [--recover] [--purge-files] [--lobster-root PATH]
+Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--upgrade] [--redeploy] [--rebuild] [--reprovision] [--status] [--watchdog] [--recover] [--purge-files] [--lobster-root PATH]
 
 Unified host deployment orchestrator:
   Phase 1: bootstrap_host.sh (install + dry-run + verify + health)
@@ -32,10 +33,11 @@ With --teardown, run teardown_host.sh instead (remove all schedulers).
 With --upgrade, run upgrade_host.sh instead (in-place code/deps refresh).
 With --redeploy, run redeploy_host.sh instead (scheduler uninstall + reinstall).
 With --rebuild, run rebuild_host.sh instead (fresh venv + scheduler redeploy).
+With --reprovision, run reprovision_host.sh instead (teardown + pull + rebuild + redeploy).
 With --status, run status_host.sh instead (read-only host diagnostics).
 With --watchdog, run watchdog_host.sh instead (status + optional Telegram alert).
 With --recover, run recover_host.sh instead (status-driven auto-recovery).
---teardown, --upgrade, --redeploy, --rebuild, --status, --watchdog, and --recover are mutually exclusive with phase flags.
+--teardown, --upgrade, --redeploy, --rebuild, --reprovision, --status, --watchdog, and --recover are mutually exclusive with phase flags.
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -73,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --rebuild)
       REBUILD=true
+      shift
+      ;;
+    --reprovision)
+      REPROVISION=true
       shift
       ;;
     --status)
@@ -174,6 +180,14 @@ rebuild() {
   bash "${LOBSTER_ROOT}/scripts/rebuild_host.sh" "${flags[@]}"
 }
 
+reprovision() {
+  echo "--- Host reprovision ---"
+  local flags=(--lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  [[ "$SKIP_HEALTH" == true ]] && flags+=(--skip-health)
+  bash "${LOBSTER_ROOT}/scripts/reprovision_host.sh" "${flags[@]}"
+}
+
 status() {
   echo "--- Host status ---"
   local flags=(--lobster-root "$LOBSTER_ROOT")
@@ -201,11 +215,12 @@ main() {
   [[ "$UPGRADE" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$REDEPLOY" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$REBUILD" == true ]] && exclusive_count=$((exclusive_count + 1))
+  [[ "$REPROVISION" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$STATUS" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$WATCHDOG" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$RECOVER" == true ]] && exclusive_count=$((exclusive_count + 1))
   if [[ $exclusive_count -gt 1 ]]; then
-    echo "ERROR: --teardown, --upgrade, --redeploy, --rebuild, --status, --watchdog, and --recover are mutually exclusive" >&2
+    echo "ERROR: --teardown, --upgrade, --redeploy, --rebuild, --reprovision, --status, --watchdog, and --recover are mutually exclusive" >&2
     exit 1
   fi
 
@@ -233,6 +248,13 @@ main() {
   if [[ "$REBUILD" == true ]]; then
     echo "=== Gate D host rebuild ==="
     rebuild
+    echo "=== deploy_host.sh finished ==="
+    return 0
+  fi
+
+  if [[ "$REPROVISION" == true ]]; then
+    echo "=== Gate D host reprovision ==="
+    reprovision
     echo "=== deploy_host.sh finished ==="
     return 0
   fi

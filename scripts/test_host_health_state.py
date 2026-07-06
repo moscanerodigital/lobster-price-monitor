@@ -129,6 +129,17 @@ def test_record_outcome_stores_rebuild_flag() -> None:
         _restore_host_health(backup)
 
 
+def test_record_outcome_stores_reprovision_flag() -> None:
+    backup = _backup_host_health()
+    try:
+        _restore_host_health(None)
+        record_outcome(1, reprovision_recovery_attempted=True)
+        rows = state.read_jsonl(HOST_HEALTH_LOG)
+        assert rows[-1].get("reprovision_recovery_attempted") is True
+    finally:
+        _restore_host_health(backup)
+
+
 def test_should_escalate_at_threshold() -> None:
     backup = _backup_host_health()
     try:
@@ -177,6 +188,7 @@ def main() -> int:
         test_record_outcome_increments_streak,
         test_record_outcome_stores_redeploy_flag,
         test_record_outcome_stores_rebuild_flag,
+        test_record_outcome_stores_reprovision_flag,
         test_should_escalate_at_threshold,
         test_watchdog_health_summary_shape,
         test_host_health_state_cli_summary,

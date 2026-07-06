@@ -109,6 +109,11 @@ def test_watchdog_units_exist() -> None:
         r"<key>LOBSTER_WATCHDOG_REBUILD_RECOVER</key>\s*<string>1</string>",
         text,
     )
+    assert "LOBSTER_WATCHDOG_REPROVISION_RECOVER" in text
+    assert re.search(
+        r"<key>LOBSTER_WATCHDOG_REPROVISION_RECOVER</key>\s*<string>1</string>",
+        text,
+    )
     assert "LOBSTER_ROOT" in text
 
     watchdog_service = SYSTEMD / "lobster-price-monitor-watchdog.service"
@@ -120,6 +125,7 @@ def test_watchdog_units_exist() -> None:
     assert "LOBSTER_WATCHDOG_DEEP_RECOVER=1" in svc_text
     assert "LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1" in svc_text
     assert "LOBSTER_WATCHDOG_REBUILD_RECOVER=1" in svc_text
+    assert "LOBSTER_WATCHDOG_REPROVISION_RECOVER=1" in svc_text
     assert "/opt/lobster-price-monitor" not in svc_text
 
     watchdog_timer = SYSTEMD / "lobster-price-monitor-watchdog.timer"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate D Wave 10/12/13/14 host recovery — status-driven remediation for degraded hosts.
+# Gate D Wave 10/12/13/14/15 host recovery — status-driven remediation for degraded hosts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,6 +13,8 @@ REDEPLOY=false
 REDEPLOY_RECOVERY_ATTEMPTED=false
 REBUILD=false
 REBUILD_RECOVERY_ATTEMPTED=false
+REPROVISION=false
+REPROVISION_RECOVERY_ATTEMPTED=false
 
 OPS_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape.ops"
 DRY_RUN_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape"
@@ -25,7 +27,7 @@ ACTIONS_TAKEN=()
 
 usage() {
   cat <<'EOF'
-Usage: scripts/recover_host.sh [--dry-run] [--notify] [--force] [--deep] [--deep-recover] [--redeploy] [--redeploy-recover] [--rebuild] [--rebuild-recover] [--lobster-root PATH]
+Usage: scripts/recover_host.sh [--dry-run] [--notify] [--force] [--deep] [--deep-recover] [--redeploy] [--redeploy-recover] [--rebuild] [--rebuild-recover] [--reprovision] [--reprovision-recover] [--lobster-root PATH]
 
 Status-driven host auto-recovery for degraded states:
   1. Run status_host.sh --json
@@ -35,8 +37,10 @@ Status-driven host auto-recovery for degraded states:
   5. Tier 2 (when --deep/--deep-recover or LOBSTER_WATCHDOG_DEEP_RECOVER=1): upgrade_host
   6. Tier 3 (when --redeploy/--redeploy-recover or LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1): redeploy_host
   7. Tier 4 (when --rebuild/--rebuild-recover or LOBSTER_WATCHDOG_REBUILD_RECOVER=1): rebuild_host
-  8. Re-run status_host.sh and exit with its code
-  9. Optional --notify: deduped Telegram summary of actions taken
+  8. Tier 5 (when --reprovision/--reprovision-recover or LOBSTER_WATCHDOG_REPROVISION_RECOVER=1): reprovision_host
+  9. Terminal: demote to dry-run when tier-5 leaves host degraded (ops hosts only)
+  10. Re-run status_host.sh and exit with its code
+  11. Optional --notify: deduped Telegram summary of actions taken
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -68,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       REBUILD=true
       shift
       ;;
+    --reprovision|--reprovision-recover)
+      REPROVISION=true
+      shift
+      ;;
     --lobster-root)
       LOBSTER_ROOT="$2"
       shift 2
@@ -94,6 +102,10 @@ fi
 
 if [[ "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "true" ]]; then
   REBUILD=true
+fi
+
+if [[ "${LOBSTER_WATCHDOG_REPROVISION_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REPROVISION_RECOVER:-}" == "true" ]]; then
+  REPROVISION=true
 fi
 
 log() {
@@ -191,6 +203,17 @@ sys.path.insert(0, '${LOBSTER_ROOT}/scripts')
 from recover_actions import plan_tier4_recovery_actions
 status = json.loads(sys.argv[1])
 for action in plan_tier4_recovery_actions(status, tier3_ran=True, still_degraded=True):
+    print(action)
+" "$STATUS_JSON" 2>/dev/null || true)"
+}
+
+plan_tier5_actions() {
+  PLANNED_TIER5_ACTIONS="$("${LOBSTER_ROOT}/.venv/bin/python" -c "
+import json, sys
+sys.path.insert(0, '${LOBSTER_ROOT}/scripts')
+from recover_actions import plan_tier5_recovery_actions
+status = json.loads(sys.argv[1])
+for action in plan_tier5_recovery_actions(status, tier4_ran=True, still_degraded=True):
     print(action)
 " "$STATUS_JSON" 2>/dev/null || true)"
 }
@@ -374,6 +397,23 @@ do_rebuild_host() {
   bash "${LOBSTER_ROOT}/scripts/rebuild_host.sh" "${flags[@]}"
 }
 
+do_reprovision_host() {
+  log "--- Recovery: full host reprovision (teardown + pull + rebuild + redeploy) ---"
+  record_action "run reprovision_host (tier-5 recovery)"
+  REPROVISION_RECOVERY_ATTEMPTED=true
+  local flags=(--skip-scrape --skip-verify --skip-health --lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/reprovision_host.sh" "${flags[@]}"
+}
+
+do_demote_ops() {
+  log "--- Terminal recovery: demote ops to dry-run (manual intervention required) ---"
+  record_action "demote to dry-run (manual intervention required)"
+  local flags=(--lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/demote_ops.sh" "${flags[@]}"
+}
+
 execute_action() {
   local action="$1"
   case "$action" in
@@ -385,6 +425,8 @@ execute_action() {
     upgrade_host) do_upgrade_host ;;
     redeploy_host) do_redeploy_host ;;
     rebuild_host) do_rebuild_host ;;
+    reprovision_host) do_reprovision_host ;;
+    demote_ops) do_demote_ops ;;
     *)
       log "WARNING: unknown recovery action: $action"
       ;;
@@ -444,7 +486,7 @@ maybe_notify() {
 }
 
 main() {
-  log "=== Gate D Wave 14 host recovery ==="
+  log "=== Gate D Wave 15 host recovery ==="
   log "LOBSTER_ROOT=${LOBSTER_ROOT}"
   if [[ "$DEEP" == true ]]; then
     log "Deep recovery enabled"
@@ -454,6 +496,9 @@ main() {
   fi
   if [[ "$REBUILD" == true ]]; then
     log "Rebuild recovery enabled"
+  fi
+  if [[ "$REPROVISION" == true ]]; then
+    log "Reprovision recovery enabled"
   fi
 
   if [[ ! -x "${LOBSTER_ROOT}/.venv/bin/python" && "$DRY_RUN" != true ]]; then
@@ -527,6 +572,28 @@ main() {
     if [[ -n "${PLANNED_TIER4_ACTIONS// }" ]]; then
       log "--- Tier-4 rebuild recovery ---"
       run_planned_actions "$PLANNED_TIER4_ACTIONS" "tier-4 rebuild recovery"
+      run_status
+      after_json="$STATUS_JSON"
+      after_code="$STATUS_CODE"
+    fi
+  fi
+
+  if [[ "$after_code" -eq 1 && "$REPROVISION" == true && "$REBUILD_RECOVERY_ATTEMPTED" == true ]]; then
+    plan_tier5_actions
+    if [[ -n "${PLANNED_TIER5_ACTIONS// }" ]]; then
+      log "--- Tier-5 reprovision recovery ---"
+      run_planned_actions "$PLANNED_TIER5_ACTIONS" "tier-5 reprovision recovery"
+      run_status
+      after_json="$STATUS_JSON"
+      after_code="$STATUS_CODE"
+    fi
+  fi
+
+  if [[ "$after_code" -eq 1 && "$REPROVISION_RECOVERY_ATTEMPTED" == true ]]; then
+    detect_scheduler_mode_from_json
+    if [[ "$SCHEDULER_MODE" == "ops" ]]; then
+      log "--- Terminal recovery: demote ops (manual intervention required) ---"
+      do_demote_ops
       run_status
       after_json="$STATUS_JSON"
       after_code="$STATUS_CODE"

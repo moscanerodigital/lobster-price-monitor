@@ -175,6 +175,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 | Host auto-recovery (reload serve/scrape, trigger scrape) | `make recover-host` |
 | Scheduler redeploy (tier-3 uninstall + reinstall) | `make redeploy-host` |
 | Full host rebuild (tier-4 fresh venv + redeploy) | `make rebuild-host` |
+| Full host reprovision (tier-5 teardown + pull + rebuild) | `make reprovision-host` |
 | Upgrade in place (git pull + deps + scheduler reload) | `make upgrade-host` |
 | Health check | `.venv/bin/python scripts/health_check.py` |
 | Health log (daily) | `.venv/bin/python scripts/health_check.py --log` |
@@ -293,6 +294,23 @@ bash scripts/watchdog_host.sh --recover --deep-recover --redeploy-recover --rebu
 
 Ops watchdog units default to `LOBSTER_WATCHDOG_REBUILD_RECOVER=1` (tier-4 `rebuild_host` after tier-3). `status_host.sh --json` reports `units.watchdog_rebuild_enabled`.
 
+### Full host reprovision (Gate D Wave 15)
+
+When tier-4 rebuild still leaves the host degraded, tier-5 reprovisions from scratch (preserving `data/`):
+
+```bash
+# Preview reprovision path
+bash scripts/reprovision_host.sh --dry-run
+
+# Tier-5 via recovery (after tier-1 + tier-2 + tier-3 + tier-4)
+bash scripts/recover_host.sh --dry-run --deep --redeploy --rebuild --reprovision
+
+# Watchdog with full recovery ladder
+bash scripts/watchdog_host.sh --recover --deep-recover --redeploy-recover --rebuild-recover --reprovision-recover --notify
+```
+
+Ops watchdog units default to `LOBSTER_WATCHDOG_REPROVISION_RECOVER=1` (tier-5 `reprovision_host` after tier-4). When reprovision fails on an ops host, recovery auto-demotes to dry-run (manual intervention required). `status_host.sh --json` reports `units.watchdog_reprovision_enabled`.
+
 ### Host auto-recovery (Gate D Wave 10)
 
 Status-driven remediation when the host is degraded:
@@ -355,6 +373,7 @@ Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --
 | `make upgrade-host` | In-place upgrade: pull, refresh deps, reload schedulers |
 | `make redeploy-host` | Tier-3 scheduler redeploy: uninstall + reinstall + re-promote ops |
 | `make rebuild-host` | Tier-4 full rebuild: fresh venv + bootstrap verify + scheduler redeploy |
+| `make reprovision-host` | Tier-5 full reprovision: teardown + pull + rebuild + scheduler redeploy |
 | `make status-host` | Read-only host diagnostics (scheduler, health, scrape age) |
 | `make recover-host` | Host auto-recovery for degraded states |
 | `make watchdog-host` | Host watchdog check (add `--notify` for Telegram alert) |
