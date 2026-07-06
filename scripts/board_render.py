@@ -401,6 +401,8 @@ def _is_publishable_special_label(label: str) -> bool:
         return False
     if re.search(r"\b(obster|ddock|esh cod)\b", label, re.I):
         return False
+    if _is_cryptic_slash_label(label):
+        return False
     return True
 
 
@@ -481,6 +483,50 @@ def _drop_stale_fb_specials_when_web_fresh(rows: list[dict]) -> list[dict]:
     return kept
 
 
+_SLASH_ABBREV_EXPANSIONS: dict[str, str] = {
+    "lob": "Lobster",
+    "crab": "Crab",
+    "tuna": "Tuna",
+    "cod": "Cod",
+    "hadd": "Haddock",
+    "scall": "Scallops",
+    "shrimp": "Shrimp",
+}
+
+
+def _expand_slash_abbrev(label: str) -> str:
+    """Turn cryptic FB keys like Lob/crab into readable board copy."""
+    if "/" not in label:
+        return label
+    parts = [p.strip() for p in label.split("/") if p.strip()]
+    if not parts:
+        return label
+    expanded = [
+        _SLASH_ABBREV_EXPANSIONS.get(p.lower(), p.strip().title()) for p in parts
+    ]
+    return " & ".join(expanded)
+
+
+def _is_cryptic_slash_label(label: str) -> bool:
+    """Unreadable slash abbreviations without a catalog title."""
+    if "/" not in label:
+        return False
+    if len(label) >= 12:
+        return False
+    parts = [p.strip() for p in label.split("/") if p.strip()]
+    return bool(parts) and all(len(p) <= 5 for p in parts)
+
+
+def _oyster_row_secondary(label: str, unit: str) -> str:
+    """Unit-aware oyster sublabel for grouped chalkboard rows."""
+    clean = label.strip()
+    if unit == "ea":
+        return clean if clean.lower() not in {"oysters", "named variety", ""} else "each"
+    if unit == "doz":
+        return clean if clean.lower() not in {"oysters", "named variety", ""} else "per dozen"
+    return clean
+
+
 def _special_display_label(row: dict, fallback: str) -> str:
     """Customer-facing special name — prefer catalog title, else clean snippet/key."""
     if row.get("catalog_title"):
@@ -492,12 +538,14 @@ def _special_display_label(row: dict, fallback: str) -> str:
     colon_match = re.match(r"^(.+?):\s*\$", title)
     if colon_match:
         title = colon_match.group(1).strip()
-    title = re.sub(r"\s*\$[\d.,]+(?:\s*(?:/|per)\s*\w+)?\s*$", "", title, flags=re.I).strip()
+    title = re.sub(r"\s*\$[\d.,]+(?:\s*/?\s*(?:lb|ea|doz|each)\.?)?\s*$", "", title, flags=re.I).strip()
     title = re.sub(r"\s*\d+(?:\.\d+)?\s*lb\.?\s*$", "", title, flags=re.I).strip()
     title = re.sub(r"\s*\$\s*$", "", title).strip()
     title = re.sub(r"\s+(?:are|is)\s*$", "", title, flags=re.I).strip()
     if title.lower().startswith("fresh "):
         title = title[6:].strip()
+    if _is_cryptic_slash_label(title):
+        title = _expand_slash_abbrev(title)
     return title or fallback
 
 
@@ -1241,6 +1289,7 @@ def build_board(
         else:
             continue
         label = label_for_row(r.get("key", "?"), r.get("snippet", ""))
+        oyster_secondary = ""
         if bucket == "oyster":
             label = _oyster_display_label(
                 r.get("key", "?"),
@@ -1253,6 +1302,8 @@ def build_board(
             if not _is_publishable_special_label(special_label):
                 continue
         display_price, display_unit, display_high, price_is_range = _display_values_from_row(r)
+        if bucket == "oyster":
+            oyster_secondary = _oyster_row_secondary(label, display_unit)
         if bucket == "special" and price_is_range and display_high is not None and display_high > display_price:
             if "salmon" in special_label.lower() or "tuna" in special_label.lower():
                 base = special_label.split("(")[0].strip()
@@ -1304,6 +1355,7 @@ def build_board(
                 if bucket in {"special", "oyster"}
                 else label
             ),
+            "row_secondary": oyster_secondary if bucket == "oyster" else "",
             "key": r.get("key", ""),
             "price": float(r.get("price", 0)),
             "sort_price": display_price,

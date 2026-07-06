@@ -182,6 +182,45 @@ def test_per_oyster_price_parsing():
     assert oysters[0][3] == "ea"
 
 
+def test_special_display_label_expands_slash_abbrev():
+    row = {"snippet": "Lob/crab $39 lb", "key": "crab"}
+    assert _special_display_label(row, "Crab") == "Lobster & Crab"
+
+
+def test_is_publishable_special_label_rejects_unexpanded_slash_abbrev():
+    from board_render import _is_publishable_special_label
+
+    assert _is_publishable_special_label("Lob/crab") is False
+    assert _is_publishable_special_label("Lobster & Crab") is True
+
+
+def test_oyster_row_secondary_unit_aware():
+    from board_render import _oyster_row_secondary
+
+    assert _oyster_row_secondary("Oysters", "ea") == "each"
+    assert _oyster_row_secondary("Oysters", "doz") == "per dozen"
+    assert _oyster_row_secondary("Wellfleet Select", "doz") == "Wellfleet Select"
+
+
+def test_oyster_html_label_not_per_dozen_for_each():
+    from chalk_board_html import _item_label_without_market
+
+    ea_row = {
+        "label": "Oysters",
+        "unit": "ea",
+        "row_secondary": "each",
+        "market_short": "Free Range",
+    }
+    doz_row = {
+        "label": "Oysters",
+        "unit": "doz",
+        "row_secondary": "per dozen",
+        "market_short": "Harbor Fish Oys",
+    }
+    assert _item_label_without_market(ea_row, section_key="oyster") == "each"
+    assert _item_label_without_market(doz_row, section_key="oyster") == "per dozen"
+
+
 def test_cap_specials_preserves_all_markets():
     items = []
     for i, market in enumerate(("Market A", "Market B", "Market C", "Market D", "Market E")):
@@ -211,6 +250,10 @@ def main() -> int:
         test_is_clean_special_row_rejects_fb_mashup,
         test_is_clean_special_row_accepts_catalog_and_web_snippets,
         test_special_display_label_strips_price_and_fresh_prefix,
+        test_special_display_label_expands_slash_abbrev,
+        test_is_publishable_special_label_rejects_unexpanded_slash_abbrev,
+        test_oyster_row_secondary_unit_aware,
+        test_oyster_html_label_not_per_dozen_for_each,
         test_salvage_mashup_special_rows,
         test_special_row_coherent_rejects_mislabeled_crab,
         test_per_oyster_price_parsing,

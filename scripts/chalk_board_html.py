@@ -23,6 +23,20 @@ def _group_items_by_market(items: list[dict]) -> list[tuple[str, list[dict]]]:
     return groups
 
 
+def _oyster_row_label(item: dict) -> str:
+    """Grouped oyster row title — variety name or unit-aware secondary."""
+    secondary = str(item.get("row_secondary") or "").strip()
+    if secondary:
+        return secondary
+    label = str(item.get("label") or "")
+    unit = str(item.get("unit") or item.get("unit_label", "")).replace("/", "").lower()
+    if unit == "ea":
+        return label if label.lower() != "oysters" else "each"
+    if unit in {"doz", "dozen"}:
+        return label if label.lower() != "oysters" else "per dozen"
+    return label
+
+
 def _item_label_without_market(item: dict, *, section_key: str) -> str:
     """Row title when a market sign heading is shown above the group."""
     if section_key == "special":
@@ -34,10 +48,9 @@ def _item_label_without_market(item: dict, *, section_key: str) -> str:
         return str(item.get("label") or row_primary)
     if section_key == "lobster" and item.get("is_consolidated"):
         return str(item.get("row_secondary") or item.get("label") or "Lobster")
-    label = str(item.get("label") or "")
-    if section_key == "oyster" and label.lower() == "oysters":
-        return "per dozen"
-    return label
+    if section_key == "oyster":
+        return _oyster_row_label(item)
+    return str(item.get("label") or "")
 
 
 def _html_market_sign(market_short: str, *, section_key: str, tilt: float) -> str:
@@ -92,7 +105,7 @@ def _html_price_row(item: dict, *, section_key: str, grouped_by_market: bool = F
         subtext = html.escape(raw_subtext)
     else:
         left_primary = market
-        left_secondary = "per dozen" if label.lower() == "oysters" else label
+        left_secondary = _oyster_row_label(item) if section_key == "oyster" else label
         subtext = html.escape(raw_subtext)
 
     sub_html = f'<span class="row-subtext">{subtext}</span>' if subtext else ""
@@ -243,6 +256,13 @@ def render_chalk_html(board: dict) -> str:
       --ocean: #8ec8e8;
       --gold: #e8c84a;
       --frame: #4a3418;
+      --frame-max: min(480px, 100%);
+      --logo-size: clamp(4rem, 12vw, 5.5rem);
+      --board-pad-y: 1.25rem;
+      --board-pad-x: 1rem;
+      --section-gap: 1.75rem;
+      --group-gap: 1.35rem;
+      --row-pad-y: 0.85rem;
     }}
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -258,7 +278,7 @@ def render_chalk_html(board: dict) -> str:
     }}
     .board-frame {{
       width: 100%;
-      max-width: min(480px, 100%);
+      max-width: var(--frame-max);
       background: linear-gradient(165deg, #6a4a20, var(--frame));
       border-radius: 8px;
       padding: 10px;
@@ -268,7 +288,7 @@ def render_chalk_html(board: dict) -> str:
       background: linear-gradient(180deg, var(--board-mid) 0%, var(--board-bg) 100%);
       border: 3px solid #08100c;
       border-radius: 4px;
-      padding: 1.25rem 1rem 1rem;
+      padding: var(--board-pad-y) var(--board-pad-x) 1rem;
       min-height: 70vh;
     }}
     header {{
@@ -305,7 +325,7 @@ def render_chalk_html(board: dict) -> str:
       opacity: 0.9;
     }}
     .board-section {{
-      margin-bottom: 1.75rem;
+      margin-bottom: var(--section-gap);
     }}
     .section-heading {{
       font-size: clamp(1.35rem, 5vw, 1.65rem);
@@ -321,7 +341,8 @@ def render_chalk_html(board: dict) -> str:
     .market-groups {{
       display: flex;
       flex-direction: column;
-      gap: 1.35rem;
+      gap: var(--group-gap);
+      overflow: visible;
     }}
     .market-group {{
       display: flex;
@@ -339,8 +360,8 @@ def render_chalk_html(board: dict) -> str:
       margin: 0.25rem 0 0.45rem;
     }}
     .market-sign-logo {{
-      width: clamp(4rem, 12vw, 5.5rem);
-      height: clamp(4rem, 12vw, 5.5rem);
+      width: var(--logo-size);
+      height: var(--logo-size);
       border-radius: 50%;
       object-fit: cover;
       flex-shrink: 0;
@@ -383,7 +404,7 @@ def render_chalk_html(board: dict) -> str:
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 0.35rem 0.5rem;
-      padding: 0.85rem 0;
+      padding: var(--row-pad-y) 0;
       border-bottom: 1px solid rgba(242,234,216,.08);
       line-height: 1.35;
     }}
@@ -523,6 +544,7 @@ def render_chalk_html(board: dict) -> str:
     .markets-details[open] summary::after {{
       content: " ▴";
     }}
+    /* --- Breakpoints: 480 / 768 / 1024 --- */
     @media (min-width: 481px) {{
       .price-row {{
         flex-wrap: nowrap;
@@ -534,14 +556,20 @@ def render_chalk_html(board: dict) -> str:
       }}
     }}
     @media (min-width: 768px) {{
+      :root {{
+        --frame-max: min(900px, 100%);
+        --logo-size: clamp(5rem, 6vw, 6rem);
+        --board-pad-y: 1.5rem;
+        --board-pad-x: 1.35rem;
+        --section-gap: 0;
+        --group-gap: 1rem;
+        --row-pad-y: 0.6rem;
+      }}
       body {{
         padding: 1rem 1.25rem;
       }}
-      .board-frame {{
-        max-width: min(900px, 100%);
-      }}
       .board {{
-        padding: 1.5rem 1.35rem 1.25rem;
+        padding-bottom: 1.25rem;
       }}
       .board-body {{
         display: grid;
@@ -553,23 +581,12 @@ def render_chalk_html(board: dict) -> str:
         display: flex;
         flex-direction: column;
         min-width: 0;
-        margin-bottom: 0;
       }}
       .section-heading {{
         flex-shrink: 0;
       }}
-      .market-groups {{
-        gap: 1rem;
-      }}
       .market-sign--logo {{
         margin: 0.35rem 0 0.5rem;
-      }}
-      .market-sign-logo {{
-        width: clamp(5rem, 6vw, 6rem);
-        height: clamp(5rem, 6vw, 6rem);
-      }}
-      .price-row {{
-        padding: 0.6rem 0;
       }}
       .market-group .price-row:first-child {{
         padding-top: 0.35rem;
@@ -600,44 +617,42 @@ def render_chalk_html(board: dict) -> str:
       }}
     }}
     @media (min-width: 1024px) {{
-      body {{
-        padding: 0.5rem 0.75rem;
+      :root {{
+        --frame-max: min(1050px, 100%);
+        --logo-size: 5rem;
+        --board-pad-y: 0.85rem;
+        --board-pad-x: 1.1rem;
+        --group-gap: 0.4rem;
+        --row-pad-y: 0.3rem;
       }}
-      .board-frame {{
-        max-width: min(1180px, 100%);
+      body {{
+        padding: 0.4rem 0.65rem;
       }}
       .board {{
-        padding: 1rem 1.15rem 0.75rem;
         min-height: unset;
+        padding-bottom: 0.65rem;
       }}
       header {{
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.45rem;
+        margin-bottom: 0.55rem;
+        padding-bottom: 0.35rem;
       }}
       h1 {{
-        font-size: 1.85rem;
+        font-size: 1.75rem;
       }}
       .subtitle {{
-        font-size: 0.95rem;
-        margin-top: 0.15rem;
+        font-size: 0.9rem;
+        margin-top: 0.1rem;
       }}
       .date {{
-        font-size: 1rem;
-        margin-top: 0.15rem;
+        font-size: 0.95rem;
+        margin-top: 0.1rem;
       }}
       .board-body {{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.65rem 1.15rem;
-        align-items: start;
-      }}
-      .board-section {{
-        margin-bottom: 0;
-        min-width: 0;
+        gap: 0.5rem 1rem;
       }}
       .section-heading {{
-        font-size: 1.3rem;
-        margin-bottom: 0.35rem;
+        font-size: 1.2rem;
+        margin-bottom: 0.25rem;
       }}
       .section-lobster {{
         grid-column: 1;
@@ -645,29 +660,25 @@ def render_chalk_html(board: dict) -> str:
       .section-oyster {{
         grid-column: 2;
       }}
-      .section-special,
-      .section-trends {{
-        grid-column: 1 / -1;
-      }}
       .section-lobster .market-groups {{
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.4rem 0.65rem;
+        gap: 0.35rem 0.55rem;
       }}
       .section-oyster .market-groups {{
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.4rem 0.65rem;
+        gap: 0.35rem 0.55rem;
       }}
       .section-special .market-groups {{
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 0.4rem 0.75rem;
+        gap: 0.3rem 0.55rem;
       }}
       .section-special .market-group .price-list {{
         display: block;
         column-count: 2;
-        column-gap: 0.55rem;
+        column-gap: 0.45rem;
       }}
       .section-special .market-group:not(:last-child),
       .market-group:not(:last-child) {{
@@ -675,71 +686,64 @@ def render_chalk_html(board: dict) -> str:
         padding-bottom: 0;
       }}
       .market-sign--logo {{
-        margin: 0.1rem 0 0.2rem;
-      }}
-      .market-sign-logo {{
-        width: 5rem;
-        height: 5rem;
-      }}
-      .price-row {{
-        padding: 0.3rem 0;
-        gap: 0.25rem 0.4rem;
+        margin: 0.08rem 0 0.15rem;
       }}
       .market-group .price-row:first-child {{
-        padding-top: 0.15rem;
+        padding-top: 0.1rem;
       }}
       .row-primary {{
-        font-size: 1.1rem;
-        line-height: 1.2;
+        font-size: 1.05rem;
+        line-height: 1.15;
       }}
       .row-secondary {{
-        font-size: 0.95rem;
+        font-size: 0.9rem;
       }}
       .price-amount {{
-        font-size: 1.45rem;
+        font-size: 1.35rem;
       }}
       .price-amount.is-wide {{
-        font-size: 1.2rem;
+        font-size: 1.1rem;
       }}
       .price-unit {{
-        font-size: 0.95rem;
+        font-size: 0.9rem;
       }}
       .section-special .price-row {{
-        padding: 0.22rem 0;
+        padding: 0.16rem 0;
         break-inside: avoid;
         -webkit-column-break-inside: avoid;
       }}
       .section-special .row-primary {{
-        font-size: 1.02rem;
+        font-size: 0.98rem;
+        line-height: 1.15;
       }}
       .section-special .row-subtext {{
-        font-size: 0.68rem;
+        font-size: 0.65rem;
         margin-top: 0;
-        line-height: 1.2;
+        line-height: 1.15;
         opacity: 0.85;
       }}
       .section-special .price-amount {{
-        font-size: 1.3rem;
+        font-size: 1.2rem;
       }}
       .section-special .price-amount.is-wide {{
-        font-size: 1.05rem;
+        font-size: 0.98rem;
       }}
       .section-trends .chart-container {{
-        height: 120px !important;
-        margin-top: 0.25rem !important;
-        padding-bottom: 0.75rem !important;
+        height: 100px !important;
+        margin-top: 0.2rem !important;
+        padding-bottom: 0.5rem !important;
       }}
       footer {{
-        margin-top: 0.65rem;
-        padding-top: 0.55rem;
+        margin-top: 0.45rem;
+        padding-top: 0.4rem;
       }}
       .footer-summary,
       .markets-details summary {{
-        font-size: 0.95rem;
+        font-size: 0.9rem;
       }}
       .footer-meta {{
-        font-size: 0.85rem;
-        margin-top: 0.3rem;
+        font-size: 0.8rem;
+        margin-top: 0.2rem;
       }}
     }}
     @media (max-width: 480px) {{
@@ -782,10 +786,6 @@ def render_chalk_html(board: dict) -> str:
       }}
       .price-row.is-consolidated .row-secondary {{
         font-size: 0.95rem;
-      }}
-      .market-sign-logo {{
-        width: 4rem;
-        height: 4rem;
       }}
       .market-sign-label {{
         font-size: 1.1rem;
