@@ -45,8 +45,10 @@ Remove all schedulers from a host (does not delete `.venv`, `data/`, or the repo
 ```bash
 bash scripts/teardown_host.sh --dry-run       # preview
 make teardown-host                             # demote ops if loaded → uninstall all
+make teardown-host TEARDOWN_FLAGS=--purge-files  # also delete installed plists/units
 make uninstall-scheduler                       # uninstall schedulers only
 bash scripts/deploy_host.sh --teardown         # same as teardown-host via orchestrator
+bash scripts/deploy_host.sh --teardown --purge-files
 ```
 
 | Flag | Effect |
@@ -56,6 +58,32 @@ bash scripts/deploy_host.sh --teardown         # same as teardown-host via orche
 | `--purge-files` | Delete installed plists/units from disk after unload |
 
 After teardown, `make verify-deploy` is expected to fail (no schedulers loaded). Re-deploy with `make deploy-host`.
+
+## Host upgrade (Gate D Wave 7)
+
+In-place upgrade for hosts that already have `.venv`, `data/`, and schedulers loaded:
+
+```bash
+bash scripts/upgrade_host.sh --dry-run       # preview
+make upgrade-host                             # pull → install → reload → scrape → verify
+bash scripts/deploy_host.sh --upgrade        # same via orchestrator
+```
+
+| Step | Action |
+|------|--------|
+| Pull | `git pull --ff-only` (use `--skip-pull` for non-git installs) |
+| Deps | `scripts/install.sh` |
+| Reload | Re-copy scheduler units; preserves dry-run vs ops mode |
+| Verify | `make verify-deploy` (dry-run) or `make verify-ops` (ops) |
+
+| Flag | Effect |
+|------|--------|
+| `--skip-pull` | Skip git pull |
+| `--skip-scrape` | Skip confirmation scrape |
+| `--skip-verify` | Skip gate verification |
+| `--skip-health` | Skip health timer reload |
+
+Does not demote ops, promote dry-run, or delete `data/`.
 
 ## Dry-run scrape (no Telegram)
 
