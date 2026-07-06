@@ -34,6 +34,7 @@ make verify-deploy-ci                      # Deploy gate smoke (scheduler checks
 make verify-ops-ci                         # Gate D smoke (learnings + ops verifier)
 make deploy-host                           # host: phases 1–2 bootstrap + scheduler
 make upgrade-host                          # host: in-place pull + deps + scheduler reload
+make status-host                           # host: read-only scheduler/health diagnostics
 make teardown-host                         # host: remove all schedulers
 make bootstrap-host                        # host: phase 1 only
 .venv/bin/python scripts/health_check.py

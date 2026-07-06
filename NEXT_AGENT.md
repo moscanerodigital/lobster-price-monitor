@@ -171,6 +171,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 
 | Task | Command |
 |------|---------|
+| Host status (scheduler, health, scrape age) | `make status-host` |
 | Upgrade in place (git pull + deps + scheduler reload) | `make upgrade-host` |
 | Health check | `.venv/bin/python scripts/health_check.py` |
 | Health log (daily) | `.venv/bin/python scripts/health_check.py --log` |
@@ -197,6 +198,23 @@ bash scripts/upgrade_host.sh --skip-pull
 ```
 
 `upgrade_host.sh` detects scheduler mode (dry-run, ops, or none) and reloads matching units. Dry-run hosts run `make verify-deploy`; ops hosts run `make verify-ops`. Also available via `bash scripts/deploy_host.sh --upgrade`.
+
+### Host status (Gate D Wave 8)
+
+Read-only diagnostics for a running host:
+
+```bash
+# Human-readable report
+make status-host
+
+# JSON for scripting
+bash scripts/status_host.sh --json
+
+# Preview checks without executing
+bash scripts/deploy_host.sh --dry-run --status
+```
+
+Reports scheduler mode (none/dry-run/ops), unit loaded/active state, git revision, scrape freshness (>24h warns), `health_check.py` summary, serve URLs, and secrets preflight. Exit codes: 0 healthy, 1 degraded, 2 fatal preflight.
 
 **Teardown with purge:** `make teardown-host TEARDOWN_FLAGS=--purge-files` or `bash scripts/deploy_host.sh --teardown --purge-files`.
 
@@ -235,6 +253,7 @@ bash scripts/upgrade_host.sh --skip-pull
 | `make demote-ops` | Roll back ops scheduler to dry-run (no live alerts) |
 | `make teardown-host` | Full teardown: demote ops if loaded → uninstall all schedulers |
 | `make upgrade-host` | In-place upgrade: pull, refresh deps, reload schedulers |
+| `make status-host` | Read-only host diagnostics (scheduler, health, scrape age) |
 | `make uninstall-scheduler` | Unload scrape/serve/health schedulers only |
 | `scripts/preflight_secrets.sh` | Check secrets paths without printing values |
 | `make regen-bplus-fixtures` | Regenerate CI Gate B+ fixture data (maintainer-only) |
