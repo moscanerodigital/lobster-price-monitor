@@ -198,6 +198,7 @@ def alert_host_watchdog(
     reasons: list[str],
     force: bool = False,
     dry_run: bool = False,
+    recovery_attempted: bool = False,
 ) -> bool:
     """Send deduped host-health Telegram. Returns True if sent."""
     if not reasons:
@@ -211,10 +212,11 @@ def alert_host_watchdog(
     lobster_root = status.get("lobster_root", "")
     git_rev = status.get("git_revision", "n/a")
     reason_lines = "\n".join(f"· {r}" for r in reasons)
+    recovery_note = "\n· auto-recovery attempted" if recovery_attempted else ""
     text = (
         f"⚠️ *HOST WATCHDOG* — lobster-price-monitor\n"
         f"status: {label} (exit {exit_code})\n"
-        f"{reason_lines}\n"
+        f"{reason_lines}{recovery_note}\n"
         f"LOBSTER_ROOT: {lobster_root}\n"
         f"rev: {git_rev}\n"
         f"run: make status-host"
@@ -261,6 +263,11 @@ def main() -> int:
     )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--recovery-attempted",
+        action="store_true",
+        help="Note in alert that auto-recovery was attempted before notifying",
+    )
     args = parser.parse_args()
 
     if args.recovery:
@@ -292,6 +299,7 @@ def main() -> int:
         reasons=reasons,
         force=args.force,
         dry_run=args.dry_run,
+        recovery_attempted=args.recovery_attempted,
     )
     return 0
 

@@ -8,6 +8,7 @@ DRY_RUN=false
 NOTIFY=false
 FORCE=false
 RECOVER=false
+RECOVERY_ATTEMPTED=false
 
 usage() {
   cat <<'EOF'
@@ -114,6 +115,7 @@ maybe_notify() {
   local alert_flags=(--status-json "$STATUS_JSON" --exit-code "$status_code")
   [[ "$FORCE" == true ]] && alert_flags+=(--force)
   [[ "$DRY_RUN" == true ]] && alert_flags+=(--dry-run)
+  [[ "$RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--recovery-attempted)
 
   if [[ "$DRY_RUN" == true ]]; then
     log "[dry-run] would alert for exit ${status_code}"
@@ -137,6 +139,7 @@ maybe_recover() {
   fi
 
   log "--- Watchdog: attempting host recovery ---"
+  RECOVERY_ATTEMPTED=true
   local recover_flags=(--lobster-root "$LOBSTER_ROOT")
   [[ "$DRY_RUN" == true ]] && recover_flags+=(--dry-run)
   [[ "$FORCE" == true ]] && recover_flags+=(--force)

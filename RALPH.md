@@ -115,6 +115,8 @@ $LOBSTER_ROOT/
 
 **Gate D Wave 10 (2026-07-06):** Host auto-recovery — `scripts/recover_host.sh` (status-driven remediation: reload serve, reload scrape scheduler, trigger scrape, install watchdog), `scripts/recover_actions.py` (action planning), recovery Telegram via `watchdog_alert.py`; optional `--recover` on watchdog (`LOBSTER_WATCHDOG_RECOVER=1`); `deploy_host.sh --recover`; `make recover-host`. Status reports watchdog unit; ops gate verifies watchdog loaded.
 
+**Gate D Wave 11 (2026-07-06):** Closed-loop ops recovery — watchdog scheduler defaults to `LOBSTER_WATCHDOG_RECOVER=1` (recover before alert on ops hosts); `verify_ops_gate.py` verifies recovery enabled; `status_host.sh` reports `units.watchdog_recover_enabled`; watchdog alerts note when auto-recovery was attempted but host remains unhealthy.
+
 **Deploy gate criteria:** `make verify-core` passes · `data/board.html` exists · `health_check.py` passes · dry-run scheduler loaded (ops **not** loaded) · serve unit running. CI: `--skip-scheduling --skip-verify-suite`.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
