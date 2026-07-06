@@ -41,6 +41,8 @@ def test_status_host_json_flag() -> None:
     assert data["dry_run"] is True
     assert "scheduler_mode" in data
     assert "serve" in data
+    assert "units" in data
+    assert "watchdog_loaded" in data["units"]
 
 
 def test_status_host_help() -> None:

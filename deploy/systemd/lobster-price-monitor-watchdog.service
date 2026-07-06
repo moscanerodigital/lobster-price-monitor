@@ -8,6 +8,7 @@ Type=oneshot
 User=erik
 WorkingDirectory=LOBSTER_ROOT
 Environment=LOBSTER_WATCHDOG_ALERTS=1
+Environment=LOBSTER_WATCHDOG_RECOVER=0
 ExecStart=LOBSTER_ROOT/scripts/watchdog_host.sh --notify
 StandardOutput=append:LOBSTER_ROOT/logs/watchdog.stdout.log
 StandardError=append:LOBSTER_ROOT/logs/watchdog.stderr.log

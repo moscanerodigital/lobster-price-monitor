@@ -12,9 +12,11 @@ OPS_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape.ops"
 DRY_RUN_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape"
 SERVE_LABEL="com.erik.lobster-price-monitor.serve"
 HEALTH_LABEL="com.erik.lobster-price-monitor.health"
+WATCHDOG_LABEL="com.erik.lobster-price-monitor.watchdog"
 OPS_SCRAPE_TIMER="lobster-price-monitor-scrape.ops.timer"
 DRY_RUN_SCRAPE_TIMER="lobster-price-monitor-scrape.timer"
 HEALTH_TIMER="lobster-price-monitor-health.timer"
+WATCHDOG_TIMER="lobster-price-monitor-watchdog.timer"
 SERVE_SERVICE="lobster-price-monitor-serve.service"
 
 SCHEDULER_MODE="none"
@@ -32,6 +34,7 @@ SCRAPE_UNIT_ACTIVE=false
 SERVE_LOADED=false
 SERVE_ACTIVE=false
 HEALTH_LOADED=false
+WATCHDOG_LOADED=false
 
 usage() {
   cat <<'EOF'
@@ -131,7 +134,7 @@ launchctl_pid() {
 
 check_unit_status() {
   if [[ "$DRY_RUN" == true ]]; then
-    log "[dry-run] check scheduler units (scrape, serve, health)"
+    log "[dry-run] check scheduler units (scrape, serve, health, watchdog)"
     return 0
   fi
 
@@ -166,6 +169,10 @@ check_unit_status() {
       if launchctl list 2>/dev/null | grep -q "${HEALTH_LABEL}$"; then
         HEALTH_LOADED=true
       fi
+
+      if launchctl list 2>/dev/null | grep -q "${WATCHDOG_LABEL}$"; then
+        WATCHDOG_LOADED=true
+      fi
       ;;
     Linux)
       local scrape_timer=""
@@ -190,6 +197,10 @@ check_unit_status() {
 
       if systemctl is-enabled "$HEALTH_TIMER" &>/dev/null; then
         HEALTH_LOADED=true
+      fi
+
+      if systemctl is-enabled "$WATCHDOG_TIMER" &>/dev/null; then
+        WATCHDOG_LOADED=true
       fi
       ;;
     *)
@@ -371,6 +382,9 @@ evaluate_degraded() {
       if [[ "$SERVE_LOADED" != true || "$SERVE_ACTIVE" != true ]]; then
         DEGRADED=true
       fi
+      if [[ "$SCHEDULER_MODE" == "ops" && "$WATCHDOG_LOADED" != true ]]; then
+        DEGRADED=true
+      fi
       ;;
   esac
 }
@@ -397,6 +411,7 @@ print_human_report() {
     log "Serve loaded: ${SERVE_LOADED}"
     log "Serve active: ${SERVE_ACTIVE}"
     log "Health timer loaded: ${HEALTH_LOADED}"
+    log "Watchdog timer loaded: ${WATCHDOG_LOADED}"
   fi
   log ""
   log "--- Code ---"
@@ -450,7 +465,7 @@ print_json_report() {
 
   if [[ "$DRY_RUN" == true ]]; then
     cat <<EOF
-{"lobster_root":"${LOBSTER_ROOT}","dry_run":true,"scheduler_mode":"${SCHEDULER_MODE}","git_revision":"${GIT_REVISION}","scrape":{"timestamp":"${SCRAPE_TS}","age_hours":0,"stale":false},"health":{"status":"dry-run"},"serve":{"local":"http://127.0.0.1:${SERVE_PORT}/board.html","lan":"http://${lan}:${SERVE_PORT}/board.html"},"secrets_ok":true,"status":"dry-run"}
+{"lobster_root":"${LOBSTER_ROOT}","dry_run":true,"scheduler_mode":"${SCHEDULER_MODE}","git_revision":"${GIT_REVISION}","scrape":{"timestamp":"${SCRAPE_TS}","age_hours":0,"stale":false},"health":{"status":"dry-run"},"units":{"watchdog_loaded":false},"serve":{"local":"http://127.0.0.1:${SERVE_PORT}/board.html","lan":"http://${lan}:${SERVE_PORT}/board.html"},"secrets_ok":true,"status":"dry-run"}
 EOF
     return 0
   fi
@@ -466,6 +481,7 @@ EOF
   SERVE_LOADED="$SERVE_LOADED" \
   SERVE_ACTIVE="$SERVE_ACTIVE" \
   HEALTH_LOADED="$HEALTH_LOADED" \
+  WATCHDOG_LOADED="$WATCHDOG_LOADED" \
   HEALTH_JSON="$HEALTH_JSON" \
   SERVE_PORT="$SERVE_PORT" \
   LAN_IP="$lan" \
@@ -501,6 +517,7 @@ report = {
         "serve_loaded": os.environ.get("SERVE_LOADED", "false") == "true",
         "serve_active": os.environ.get("SERVE_ACTIVE", "false") == "true",
         "health_loaded": os.environ.get("HEALTH_LOADED", "false") == "true",
+        "watchdog_loaded": os.environ.get("WATCHDOG_LOADED", "false") == "true",
     },
     "scrape": {
         "timestamp": scrape_ts or None,

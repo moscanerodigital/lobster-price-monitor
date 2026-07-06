@@ -12,11 +12,12 @@ TEARDOWN=false
 UPGRADE=false
 STATUS=false
 WATCHDOG=false
+RECOVER=false
 PURGE_FILES=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--upgrade] [--status] [--watchdog] [--purge-files] [--lobster-root PATH]
+Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--upgrade] [--status] [--watchdog] [--recover] [--purge-files] [--lobster-root PATH]
 
 Unified host deployment orchestrator:
   Phase 1: bootstrap_host.sh (install + dry-run + verify + health)
@@ -29,7 +30,8 @@ With --teardown, run teardown_host.sh instead (remove all schedulers).
 With --upgrade, run upgrade_host.sh instead (in-place code/deps refresh).
 With --status, run status_host.sh instead (read-only host diagnostics).
 With --watchdog, run watchdog_host.sh instead (status + optional Telegram alert).
---teardown, --upgrade, --status, and --watchdog are mutually exclusive with phase flags.
+With --recover, run recover_host.sh instead (status-driven auto-recovery).
+--teardown, --upgrade, --status, --watchdog, and --recover are mutually exclusive with phase flags.
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -67,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --watchdog)
       WATCHDOG=true
+      shift
+      ;;
+    --recover)
+      RECOVER=true
       shift
       ;;
     --purge-files)
@@ -154,14 +160,22 @@ watchdog() {
   bash "${LOBSTER_ROOT}/scripts/watchdog_host.sh" "${flags[@]}"
 }
 
+recover() {
+  echo "--- Host recovery ---"
+  local flags=(--lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/recover_host.sh" "${flags[@]}"
+}
+
 main() {
   local exclusive_count=0
   [[ "$TEARDOWN" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$UPGRADE" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$STATUS" == true ]] && exclusive_count=$((exclusive_count + 1))
   [[ "$WATCHDOG" == true ]] && exclusive_count=$((exclusive_count + 1))
+  [[ "$RECOVER" == true ]] && exclusive_count=$((exclusive_count + 1))
   if [[ $exclusive_count -gt 1 ]]; then
-    echo "ERROR: --teardown, --upgrade, --status, and --watchdog are mutually exclusive" >&2
+    echo "ERROR: --teardown, --upgrade, --status, --watchdog, and --recover are mutually exclusive" >&2
     exit 1
   fi
 
@@ -189,6 +203,13 @@ main() {
   if [[ "$WATCHDOG" == true ]]; then
     echo "=== Gate D host watchdog ==="
     watchdog
+    echo "=== deploy_host.sh finished ==="
+    return 0
+  fi
+
+  if [[ "$RECOVER" == true ]]; then
+    echo "=== Gate D host recovery ==="
+    recover
     echo "=== deploy_host.sh finished ==="
     return 0
   fi

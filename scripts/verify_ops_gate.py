@@ -31,6 +31,9 @@ from verify_production_gate import (
     _launchctl_labels,
 )
 
+WATCHDOG_LABEL = "com.erik.lobster-price-monitor.watchdog"
+WATCHDOG_TIMER = "lobster-price-monitor-watchdog.timer"
+
 
 class GateFailure(Exception):
     pass
@@ -208,6 +211,42 @@ def check_ops_scheduler_loaded(*, skip_alerts_check: bool) -> None:
         print("  ! Unknown OS — skipping ops scheduler verification")
 
 
+def check_watchdog_loaded(*, skip_alerts_check: bool) -> None:
+    if skip_alerts_check:
+        print("  ! watchdog check skipped (CI mode)")
+        return
+
+    if sys.platform == "darwin":
+        proc = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+        )
+        labels = _launchctl_labels(proc.stdout)
+        if WATCHDOG_LABEL not in labels:
+            _fail(
+                f"watchdog launchd agent '{WATCHDOG_LABEL}' not loaded — "
+                "run scripts/install_scheduler.sh --with-watchdog or make promote-ops"
+            )
+        print(f"  ✓ watchdog launchd agent loaded ({WATCHDOG_LABEL})")
+
+    elif sys.platform.startswith("linux"):
+        proc = subprocess.run(
+            ["systemctl", "is-enabled", WATCHDOG_TIMER],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0 or "enabled" not in proc.stdout:
+            _fail(
+                f"watchdog systemd timer '{WATCHDOG_TIMER}' not enabled — "
+                "run scripts/install_scheduler.sh --with-watchdog or make promote-ops"
+            )
+        print(f"  ✓ watchdog systemd timer enabled ({WATCHDOG_TIMER})")
+
+    else:
+        print("  ! Unknown OS — skipping watchdog verification")
+
+
 def check_alerts_enabled(*, skip_alerts_check: bool) -> None:
     if skip_alerts_check:
         print("  ! alerts check skipped (CI mode)")
@@ -264,6 +303,10 @@ def main() -> int:
         (
             "alerts_enabled",
             lambda: check_alerts_enabled(skip_alerts_check=args.skip_alerts_check),
+        ),
+        (
+            "watchdog_loaded",
+            lambda: check_watchdog_loaded(skip_alerts_check=args.skip_alerts_check),
         ),
     ]
 

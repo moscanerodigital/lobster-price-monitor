@@ -45,6 +45,13 @@ def test_watchdog_host_help() -> None:
     proc = _run("-h")
     assert proc.returncode == 0
     assert "watchdog_host.sh" in proc.stdout
+    assert "--recover" in proc.stdout
+
+
+def test_watchdog_host_dry_run_recover() -> None:
+    proc = _run("--dry-run", "--recover")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "recovery" in proc.stdout.lower()
 
 
 def test_build_watchdog_reasons_stale_scrape() -> None:
@@ -168,6 +175,7 @@ def main() -> int:
         test_watchdog_host_dry_run_exits_zero,
         test_watchdog_host_dry_run_notify_would_alert,
         test_watchdog_host_help,
+        test_watchdog_host_dry_run_recover,
         test_build_watchdog_reasons_stale_scrape,
         test_alert_host_watchdog_dedupes_without_force,
         test_alert_host_watchdog_force_bypasses_dedupe,
