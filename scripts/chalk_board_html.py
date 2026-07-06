@@ -308,11 +308,12 @@ def render_chalk_html(board: dict) -> str:
       margin-bottom: 1.75rem;
     }}
     .section-heading {{
-      font-size: clamp(1.35rem, 5vw, 1.6rem);
+      font-size: clamp(1.35rem, 5vw, 1.65rem);
       font-weight: 700;
-      margin-bottom: 0.75rem;
-      letter-spacing: 0.03em;
-      line-height: 1.3;
+      margin-bottom: 0.65rem;
+      letter-spacing: 0.04em;
+      line-height: 1.25;
+      text-transform: uppercase;
     }}
     .section-lobster .section-heading {{ color: var(--lobster); }}
     .section-oyster .section-heading {{ color: var(--ocean); }}
@@ -407,11 +408,13 @@ def render_chalk_html(board: dict) -> str:
       line-height: 1.3;
     }}
     .row-subtext {{
-      font-size: 0.95rem;
+      font-size: 0.82rem;
       font-weight: 500;
       color: var(--chalk-muted);
-      margin-top: 0.15rem;
-      line-height: 1.35;
+      margin-top: 0.1rem;
+      line-height: 1.25;
+      letter-spacing: 0.02em;
+      opacity: 0.85;
     }}
     .row-price {{
       flex: 0 0 auto;
@@ -424,9 +427,10 @@ def render_chalk_html(board: dict) -> str:
     .section-oyster .price-amount {{ color: var(--ocean); }}
     .section-special .price-amount {{ color: var(--gold); }}
     .price-amount {{
-      font-size: clamp(1.5rem, 6.5vw, 2.25rem);
+      font-size: clamp(1.55rem, 6.5vw, 2.35rem);
       font-weight: 700;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
     }}
     .price-unit {{
       font-size: 1.1rem;
@@ -588,58 +592,154 @@ def render_chalk_html(board: dict) -> str:
         padding: 0.5rem 0;
       }}
       .section-special .row-subtext {{
-        font-size: 0.85rem;
-        margin-top: 0.05rem;
+        font-size: 0.75rem;
+        margin-top: 0;
+      }}
+      .section-special .row-primary {{
+        font-size: clamp(1.05rem, 3.5vw, 1.25rem);
       }}
     }}
     @media (min-width: 1024px) {{
+      body {{
+        padding: 0.5rem 0.75rem;
+      }}
       .board-frame {{
-        max-width: min(1050px, 100%);
+        max-width: min(1180px, 100%);
+      }}
+      .board {{
+        padding: 1rem 1.15rem 0.75rem;
+        min-height: unset;
+      }}
+      header {{
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.45rem;
+      }}
+      h1 {{
+        font-size: 1.85rem;
+      }}
+      .subtitle {{
+        font-size: 0.95rem;
+        margin-top: 0.15rem;
+      }}
+      .date {{
+        font-size: 1rem;
+        margin-top: 0.15rem;
       }}
       .board-body {{
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 1.15rem 1.5rem;
-        align-items: stretch;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem 1.15rem;
+        align-items: start;
       }}
       .board-section {{
-        min-height: 0;
+        margin-bottom: 0;
+        min-width: 0;
       }}
-      .market-groups {{
-        flex: 1 1 auto;
-        min-height: 0;
+      .section-heading {{
+        font-size: 1.3rem;
+        margin-bottom: 0.35rem;
       }}
-      .section-special {{
-        grid-column: auto;
+      .section-lobster {{
+        grid-column: 1;
       }}
+      .section-oyster {{
+        grid-column: 2;
+      }}
+      .section-special,
       .section-trends {{
         grid-column: 1 / -1;
       }}
-      .board-section .market-groups {{
-        max-height: min(72vh, 42rem);
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        padding-right: 0.15rem;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(242,234,216,.2) transparent;
+      .section-lobster .market-groups {{
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem 0.65rem;
       }}
-      .board-section .market-groups::-webkit-scrollbar {{
-        width: 5px;
-      }}
-      .board-section .market-groups::-webkit-scrollbar-thumb {{
-        background: rgba(242,234,216,.18);
-        border-radius: 3px;
+      .section-oyster .market-groups {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.4rem 0.65rem;
       }}
       .section-special .market-groups {{
-        display: flex;
-        flex-direction: column;
-        gap: 0.85rem;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.4rem 0.75rem;
       }}
-      .section-lobster .market-groups,
-      .section-oyster .market-groups {{
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        gap: 0.85rem;
+      .section-special .market-group .price-list {{
+        display: block;
+        column-count: 2;
+        column-gap: 0.55rem;
+      }}
+      .section-special .market-group:not(:last-child),
+      .market-group:not(:last-child) {{
+        border-bottom: none;
+        padding-bottom: 0;
+      }}
+      .market-sign--logo {{
+        margin: 0.1rem 0 0.2rem;
+      }}
+      .market-sign-logo {{
+        width: 5rem;
+        height: 5rem;
+      }}
+      .price-row {{
+        padding: 0.3rem 0;
+        gap: 0.25rem 0.4rem;
+      }}
+      .market-group .price-row:first-child {{
+        padding-top: 0.15rem;
+      }}
+      .row-primary {{
+        font-size: 1.1rem;
+        line-height: 1.2;
+      }}
+      .row-secondary {{
+        font-size: 0.95rem;
+      }}
+      .price-amount {{
+        font-size: 1.45rem;
+      }}
+      .price-amount.is-wide {{
+        font-size: 1.2rem;
+      }}
+      .price-unit {{
+        font-size: 0.95rem;
+      }}
+      .section-special .price-row {{
+        padding: 0.22rem 0;
+        break-inside: avoid;
+        -webkit-column-break-inside: avoid;
+      }}
+      .section-special .row-primary {{
+        font-size: 1.02rem;
+      }}
+      .section-special .row-subtext {{
+        font-size: 0.68rem;
+        margin-top: 0;
+        line-height: 1.2;
+        opacity: 0.85;
+      }}
+      .section-special .price-amount {{
+        font-size: 1.3rem;
+      }}
+      .section-special .price-amount.is-wide {{
+        font-size: 1.05rem;
+      }}
+      .section-trends .chart-container {{
+        height: 120px !important;
+        margin-top: 0.25rem !important;
+        padding-bottom: 0.75rem !important;
+      }}
+      footer {{
+        margin-top: 0.65rem;
+        padding-top: 0.55rem;
+      }}
+      .footer-summary,
+      .markets-details summary {{
+        font-size: 0.95rem;
+      }}
+      .footer-meta {{
+        font-size: 0.85rem;
+        margin-top: 0.3rem;
       }}
     }}
     @media (max-width: 480px) {{
