@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate D Wave 10 host recovery — status-driven remediation for degraded hosts.
+# Gate D Wave 10/12 host recovery — status-driven remediation for degraded hosts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -7,6 +7,8 @@ LOBSTER_ROOT="${LOBSTER_ROOT:-$ROOT}"
 DRY_RUN=false
 NOTIFY=false
 FORCE=false
+DEEP=false
+DEEP_RECOVERY_ATTEMPTED=false
 
 OPS_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape.ops"
 DRY_RUN_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape"
@@ -19,15 +21,16 @@ ACTIONS_TAKEN=()
 
 usage() {
   cat <<'EOF'
-Usage: scripts/recover_host.sh [--dry-run] [--notify] [--force] [--lobster-root PATH]
+Usage: scripts/recover_host.sh [--dry-run] [--notify] [--force] [--deep] [--deep-recover] [--lobster-root PATH]
 
 Status-driven host auto-recovery for degraded states:
   1. Run status_host.sh --json
   2. If healthy, exit 0
   3. If fatal preflight, exit 2 (no auto-recovery)
-  4. Remediate: reload serve, reload scrape scheduler, trigger scrape, health check
-  5. Re-run status_host.sh and exit with its code
-  6. Optional --notify: deduped Telegram summary of actions taken
+  4. Tier 1: reload serve, reload scrape scheduler, trigger scrape, health check
+  5. Tier 2 (when --deep/--deep-recover or LOBSTER_WATCHDOG_DEEP_RECOVER=1): upgrade_host
+  6. Re-run status_host.sh and exit with its code
+  7. Optional --notify: deduped Telegram summary of actions taken
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -47,6 +50,10 @@ while [[ $# -gt 0 ]]; do
       FORCE=true
       shift
       ;;
+    --deep|--deep-recover)
+      DEEP=true
+      shift
+      ;;
     --lobster-root)
       LOBSTER_ROOT="$2"
       shift 2
@@ -62,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "${LOBSTER_WATCHDOG_DEEP_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_DEEP_RECOVER:-}" == "true" ]]; then
+  DEEP=true
+fi
 
 log() {
   echo "$@"
@@ -127,6 +138,17 @@ detect_scheduler_mode_from_json() {
 
 plan_actions() {
   PLANNED_ACTIONS="$("${LOBSTER_ROOT}/.venv/bin/python" "${LOBSTER_ROOT}/scripts/recover_actions.py" "$STATUS_JSON" 2>/dev/null || true)"
+}
+
+plan_deep_actions() {
+  PLANNED_DEEP_ACTIONS="$("${LOBSTER_ROOT}/.venv/bin/python" -c "
+import json, sys
+sys.path.insert(0, '${LOBSTER_ROOT}/scripts')
+from recover_actions import plan_deep_recovery_actions
+status = json.loads(sys.argv[1])
+for action in plan_deep_recovery_actions(status, tier1_ran=True, still_degraded=True):
+    print(action)
+" "$STATUS_JSON" 2>/dev/null || true)"
 }
 
 reload_serve_macos() {
@@ -281,6 +303,15 @@ do_install_watchdog() {
   bash "${LOBSTER_ROOT}/scripts/install_scheduler.sh" "${flags[@]}"
 }
 
+do_upgrade_host() {
+  log "--- Recovery: deep upgrade (refresh deps + reload schedulers) ---"
+  record_action "run upgrade_host (deep recovery)"
+  DEEP_RECOVERY_ATTEMPTED=true
+  local flags=(--skip-pull --skip-health --lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/upgrade_host.sh" "${flags[@]}"
+}
+
 execute_action() {
   local action="$1"
   case "$action" in
@@ -289,10 +320,27 @@ execute_action() {
     trigger_scrape) do_trigger_scrape ;;
     rerun_health) do_rerun_health ;;
     install_watchdog) do_install_watchdog ;;
+    upgrade_host) do_upgrade_host ;;
     *)
       log "WARNING: unknown recovery action: $action"
       ;;
   esac
+}
+
+run_planned_actions() {
+  local actions="$1"
+  local label="${2:-recovery}"
+  if [[ -z "${actions// }" ]]; then
+    return 0
+  fi
+  log "Planned ${label} actions:"
+  while IFS= read -r action; do
+    [[ -z "$action" ]] && continue
+    local action_label
+    action_label="$("${LOBSTER_ROOT}/.venv/bin/python" -c "import sys; sys.path.insert(0, '${LOBSTER_ROOT}/scripts'); from recover_actions import action_labels; print(action_labels('${action}'))")"
+    log "  - ${action_label}"
+    execute_action "$action"
+  done <<< "$actions"
 }
 
 maybe_notify() {
@@ -332,8 +380,11 @@ maybe_notify() {
 }
 
 main() {
-  log "=== Gate D Wave 10 host recovery ==="
+  log "=== Gate D Wave 12 host recovery ==="
   log "LOBSTER_ROOT=${LOBSTER_ROOT}"
+  if [[ "$DEEP" == true ]]; then
+    log "Deep recovery enabled"
+  fi
 
   if [[ ! -x "${LOBSTER_ROOT}/.venv/bin/python" && "$DRY_RUN" != true ]]; then
     echo "ERROR: venv not found at ${LOBSTER_ROOT}/.venv — run scripts/bootstrap_host.sh first" >&2
@@ -373,18 +424,22 @@ main() {
     exit 1
   fi
 
-  log "Planned recovery actions:"
-  while IFS= read -r action; do
-    [[ -z "$action" ]] && continue
-    local label
-    label="$("${LOBSTER_ROOT}/.venv/bin/python" -c "import sys; sys.path.insert(0, '${LOBSTER_ROOT}/scripts'); from recover_actions import action_labels; print(action_labels('${action}'))")"
-    log "  - ${label}"
-    execute_action "$action"
-  done <<< "$PLANNED_ACTIONS"
+  run_planned_actions "$PLANNED_ACTIONS" "tier-1 recovery"
 
   run_status
   local after_json="$STATUS_JSON"
   local after_code="$STATUS_CODE"
+
+  if [[ "$after_code" -eq 1 && "$DEEP" == true ]]; then
+    plan_deep_actions
+    if [[ -n "${PLANNED_DEEP_ACTIONS// }" ]]; then
+      log "--- Tier-2 deep recovery ---"
+      run_planned_actions "$PLANNED_DEEP_ACTIONS" "tier-2 deep recovery"
+      run_status
+      after_json="$STATUS_JSON"
+      after_code="$STATUS_CODE"
+    fi
+  fi
 
   maybe_notify "$before_json" "$before_code" "$after_json" "$after_code" || true
 

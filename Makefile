@@ -52,6 +52,7 @@ verify-core:
 	$(PYTHON) scripts/test_status_host.py
 	$(PYTHON) scripts/test_watchdog_host.py
 	$(PYTHON) scripts/test_recover_host.py
+	$(PYTHON) scripts/test_host_health_state.py
 	$(PYTHON) scripts/test_preflight_secrets.py
 
 verify: verify-core

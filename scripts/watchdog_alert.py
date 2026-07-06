@@ -135,6 +135,94 @@ def _recent_recovery_alert(key: str, *, within_hours: int = DEDUPE_HOURS) -> boo
     return False
 
 
+def _recent_escalation_alert(key: str, *, within_hours: int = DEDUPE_HOURS) -> bool:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=within_hours)
+    for row in state.read_jsonl("alerts_sent.jsonl"):
+        if row.get("kind") != "host_escalation":
+            continue
+        if row.get("key") != key:
+            continue
+        ts = row.get("ts") or row.get("observed_at")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if dt.astimezone(timezone.utc) >= cutoff:
+            return True
+    return False
+
+
+def alert_host_escalation(
+    *,
+    status: dict,
+    exit_code: int,
+    reasons: list[str],
+    consecutive_failures: int,
+    force: bool = False,
+    dry_run: bool = False,
+    recovery_attempted: bool = False,
+    deep_recovery_attempted: bool = False,
+) -> bool:
+    """Send deduped escalation Telegram when failure streak meets threshold."""
+    if not reasons:
+        return False
+
+    key = f"escalation|{reason_hash(status)}|streak={consecutive_failures}"
+    if not force and _recent_escalation_alert(key):
+        return False
+
+    label = "FATAL" if exit_code >= 2 else "DEGRADED"
+    lobster_root = status.get("lobster_root", "")
+    git_rev = status.get("git_revision", "n/a")
+    reason_lines = "\n".join(f"· {r}" for r in reasons)
+    recovery_notes: list[str] = []
+    if recovery_attempted:
+        recovery_notes.append("auto-recovery attempted")
+    if deep_recovery_attempted:
+        recovery_notes.append("deep recovery attempted")
+    recovery_note = ""
+    if recovery_notes:
+        recovery_note = "\n· " + " · ".join(recovery_notes)
+    text = (
+        f"🚨 *HOST ESCALATION* — lobster-price-monitor\n"
+        f"status: {label} (exit {exit_code})\n"
+        f"consecutive failures: {consecutive_failures}\n"
+        f"{reason_lines}{recovery_note}\n"
+        f"LOBSTER_ROOT: {lobster_root}\n"
+        f"rev: {git_rev}\n"
+        f"try: make upgrade-host · make recover-host · make demote-ops · make status-host"
+    )
+
+    if dry_run:
+        print(f"[dry-run] would escalate: {key}")
+        print(text)
+        return True
+
+    now = datetime.now(timezone.utc).isoformat()
+    if send_telegram(text):
+        state.append_jsonl(
+            "alerts_sent.jsonl",
+            {
+                "key": key,
+                "kind": "host_escalation",
+                "exit_code": exit_code,
+                "reasons": reasons,
+                "reason_hash": reason_hash(status),
+                "consecutive_failures": consecutive_failures,
+                "lobster_root": lobster_root,
+                "git_revision": git_rev,
+                "ts": now,
+                "observed_at": now,
+            },
+        )
+        return True
+    return False
+
+
 def alert_host_recovery(
     *,
     status_before: dict,
@@ -268,7 +356,34 @@ def main() -> int:
         action="store_true",
         help="Note in alert that auto-recovery was attempted before notifying",
     )
+    parser.add_argument("--escalation", action="store_true", help="Send escalation alert")
+    parser.add_argument("--consecutive-failures", type=int, default=0)
+    parser.add_argument(
+        "--deep-recovery-attempted",
+        action="store_true",
+        help="Note in escalation alert that deep recovery was attempted",
+    )
     args = parser.parse_args()
+
+    if args.escalation:
+        if args.exit_code is None:
+            print("ERROR: --exit-code required for escalation alerts", file=sys.stderr)
+            return 1
+        status = json.loads(args.status_json)
+        reasons = build_watchdog_reasons(status)
+        if not reasons:
+            return 0
+        alert_host_escalation(
+            status=status,
+            exit_code=args.exit_code,
+            reasons=reasons,
+            consecutive_failures=args.consecutive_failures,
+            force=args.force,
+            dry_run=args.dry_run,
+            recovery_attempted=args.recovery_attempted,
+            deep_recovery_attempted=args.deep_recovery_attempted,
+        )
+        return 0
 
     if args.recovery:
         status_before = json.loads(args.status_json)

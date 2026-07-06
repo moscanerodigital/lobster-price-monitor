@@ -51,6 +51,25 @@ def plan_recovery_actions(status: dict[str, Any]) -> list[str]:
     return ordered
 
 
+def plan_deep_recovery_actions(
+    status: dict[str, Any],
+    *,
+    tier1_ran: bool = False,
+    still_degraded: bool = False,
+) -> list[str]:
+    """Return tier-2 recovery actions when basic remediation did not restore health."""
+    if status.get("status") == "fatal":
+        return []
+
+    scheduler_mode = status.get("scheduler_mode", "none")
+    if scheduler_mode not in ("dry-run", "ops"):
+        return []
+
+    if still_degraded or tier1_ran:
+        return ["upgrade_host"]
+    return []
+
+
 def action_labels(action: str) -> str:
     labels = {
         "reload_serve": "reload serve unit",
@@ -58,6 +77,7 @@ def action_labels(action: str) -> str:
         "trigger_scrape": "run confirmation scrape",
         "rerun_health": "re-run health_check.py",
         "install_watchdog": "install watchdog timer",
+        "upgrade_host": "run upgrade_host (refresh deps + reload schedulers)",
     }
     return labels.get(action, action)
 

@@ -243,6 +243,20 @@ The scheduled ops watchdog runs auto-recovery before alerting. If recovery fails
 
 `make verify-ops` on a host also checks that the watchdog unit has recovery enabled.
 
+### Recovery escalation (Gate D Wave 12)
+
+When auto-recovery leaves the host degraded across multiple watchdog runs, escalation alerts fire:
+
+```bash
+# Preview deep recovery path
+bash scripts/recover_host.sh --dry-run --deep
+
+# Watchdog with deep recovery + escalation tracking
+bash scripts/watchdog_host.sh --recover --deep-recover --notify
+```
+
+Ops watchdog units default to `LOBSTER_WATCHDOG_DEEP_RECOVER=1` (tier-2 `upgrade_host` after tier-1 recovery). Failure streak tracked in `data/host-health.jsonl`; escalation Telegram sent after 3 consecutive failures in 48h (`LOBSTER_WATCHDOG_ESCALATE_AFTER` to override). `status_host.sh --json` reports `watchdog_health.consecutive_failures`.
+
 ### Host auto-recovery (Gate D Wave 10)
 
 Status-driven remediation when the host is degraded:
@@ -254,8 +268,11 @@ bash scripts/recover_host.sh --dry-run
 # Run recovery (reload serve, scrape scheduler, trigger scrape as needed)
 make recover-host
 
-# Recovery + Telegram summary of actions taken
+# Recovery + re-run health check
 bash scripts/recover_host.sh --notify
+
+# Deep recovery (tier-2 upgrade_host when tier-1 insufficient)
+bash scripts/recover_host.sh --deep
 
 # Via deploy orchestrator
 bash scripts/deploy_host.sh --recover

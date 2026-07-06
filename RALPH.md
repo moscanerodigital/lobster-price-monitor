@@ -117,6 +117,8 @@ $LOBSTER_ROOT/
 
 **Gate D Wave 11 (2026-07-06):** Closed-loop ops recovery — watchdog scheduler defaults to `LOBSTER_WATCHDOG_RECOVER=1` (recover before alert on ops hosts); `verify_ops_gate.py` verifies recovery enabled; `status_host.sh` reports `units.watchdog_recover_enabled`; watchdog alerts note when auto-recovery was attempted but host remains unhealthy.
 
+**Gate D Wave 12 (2026-07-06):** Recovery escalation — `scripts/host_health_state.py` tracks consecutive watchdog failures in `data/host-health.jsonl`; tier-2 deep recovery runs `upgrade_host.sh` when tier-1 leaves host degraded (`LOBSTER_WATCHDOG_DEEP_RECOVER=1` default on ops watchdog); escalation Telegram (`kind=host_escalation`) after threshold (default 3 failures in 48h); `status_host.sh` reports `watchdog_health`; `verify_ops_gate.py` verifies deep recovery enabled.
+
 **Deploy gate criteria:** `make verify-core` passes · `data/board.html` exists · `health_check.py` passes · dry-run scheduler loaded (ops **not** loaded) · serve unit running. CI: `--skip-scheduling --skip-verify-suite`.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
@@ -146,7 +148,7 @@ All gates (AAA → D) pass in CI. Code and verification are complete on `main`.
 
 <!-- auto-updated from run-log -->
 
-- **Latest run** (2026-07-06T00:22:08.059459+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
+- **Latest run** (2026-07-06T02:32:50.041646+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
 - **Five Islands Lobster Co.** (partial): Menu reference only — no live scrape
 
 ## Usage / Budget Log

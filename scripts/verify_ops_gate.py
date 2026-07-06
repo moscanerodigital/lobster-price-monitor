@@ -84,6 +84,23 @@ def _text_has_recover_flag(text: str) -> bool:
     return False
 
 
+def _text_has_deep_recover_flag(text: str) -> bool:
+    lowered = text.lower()
+    if "lobster_watchdog_deep_recover=1" in lowered.replace(" ", ""):
+        return True
+    if re.search(r"lobster_watchdog_deep_recover\s*=\s*1", text, re.IGNORECASE):
+        return True
+    if re.search(r"lobster_watchdog_deep_recover\s*=\s*true", text, re.IGNORECASE):
+        return True
+    if re.search(
+        r"<key>LOBSTER_WATCHDOG_DEEP_RECOVER</key>\s*<string>1</string>",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 def _text_has_alerts_flag(text: str) -> bool:
     lowered = text.lower()
     if "lobster_alerts=1" in lowered.replace(" ", ""):
@@ -262,6 +279,39 @@ def _watchdog_unit_has_recover_flag() -> bool:
     return True
 
 
+def _watchdog_unit_has_deep_recover_flag() -> bool:
+    lobster_root = os.environ.get("LOBSTER_ROOT", str(ROOT))
+
+    if sys.platform == "darwin":
+        watchdog_path = (
+            Path.home()
+            / "Library/LaunchAgents/com.erik.lobster-price-monitor.watchdog.plist"
+        )
+        if not watchdog_path.exists():
+            watchdog_path = (
+                Path(lobster_root)
+                / "deploy/launchd/com.erik.lobster-price-monitor.watchdog.plist"
+            )
+        if watchdog_path.exists():
+            return _text_has_deep_recover_flag(watchdog_path.read_text(encoding="utf-8"))
+        return False
+
+    if sys.platform.startswith("linux"):
+        proc = subprocess.run(
+            ["systemctl", "cat", "lobster-price-monitor-watchdog"],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0 and _text_has_deep_recover_flag(proc.stdout):
+            return True
+        watchdog_service = Path(lobster_root) / "deploy/systemd/lobster-price-monitor-watchdog.service"
+        if watchdog_service.exists():
+            return _text_has_deep_recover_flag(watchdog_service.read_text(encoding="utf-8"))
+        return False
+
+    return True
+
+
 def check_watchdog_loaded(*, skip_alerts_check: bool) -> None:
     if skip_alerts_check:
         print("  ! watchdog check skipped (CI mode)")
@@ -315,6 +365,25 @@ def check_watchdog_recovery_enabled(*, skip_alerts_check: bool) -> None:
         print("  ✓ watchdog systemd unit has LOBSTER_WATCHDOG_RECOVER=1")
     else:
         print("  ! Unknown OS — skipping watchdog recovery verification")
+
+
+def check_watchdog_deep_recovery_enabled(*, skip_alerts_check: bool) -> None:
+    if skip_alerts_check:
+        print("  ! watchdog deep recovery check skipped (CI mode)")
+        return
+
+    if not _watchdog_unit_has_deep_recover_flag():
+        _fail(
+            "watchdog unit lacks LOBSTER_WATCHDOG_DEEP_RECOVER=1 — "
+            "reinstall watchdog via make promote-ops or make upgrade-host"
+        )
+
+    if sys.platform == "darwin":
+        print("  ✓ watchdog launchd plist has LOBSTER_WATCHDOG_DEEP_RECOVER=1")
+    elif sys.platform.startswith("linux"):
+        print("  ✓ watchdog systemd unit has LOBSTER_WATCHDOG_DEEP_RECOVER=1")
+    else:
+        print("  ! Unknown OS — skipping watchdog deep recovery verification")
 
 
 def check_alerts_enabled(*, skip_alerts_check: bool) -> None:
@@ -381,6 +450,10 @@ def main() -> int:
         (
             "watchdog_recovery_enabled",
             lambda: check_watchdog_recovery_enabled(skip_alerts_check=args.skip_alerts_check),
+        ),
+        (
+            "watchdog_deep_recovery_enabled",
+            lambda: check_watchdog_deep_recovery_enabled(skip_alerts_check=args.skip_alerts_check),
         ),
     ]
 
