@@ -127,7 +127,7 @@ bash scripts/deploy_host.sh --watchdog     # same via orchestrator
 
 Watchdog reuses `status_host.sh --json` checks. Deduped alerts log to `alerts_sent.jsonl` with `kind=host_watchdog`.
 
-**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local) with `LOBSTER_WATCHDOG_RECOVER=1` and `LOBSTER_WATCHDOG_DEEP_RECOVER=1` (recover before alert, deep recovery on failure). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
+**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local) with `LOBSTER_WATCHDOG_RECOVER=1`, `LOBSTER_WATCHDOG_DEEP_RECOVER=1`, and `LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1` (recover before alert, deep + redeploy recovery on failure). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
 
 ## Closed-loop ops recovery (Gate D Wave 11)
 
@@ -150,9 +150,28 @@ make status-host                                 # reports watchdog_health failu
 | `LOBSTER_WATCHDOG_DEEP_RECOVER=1` | Run `upgrade_host.sh` when tier-1 recovery leaves host degraded (default on ops watchdog) |
 | `LOBSTER_WATCHDOG_ESCALATE_AFTER=3` | Send escalation Telegram after N consecutive failures in 48h |
 
-Escalation alerts (`kind=host_escalation`) include failure streak, recovery notes, and manual steps (`make upgrade-host`, `make recover-host`, `make demote-ops`). Normal watchdog alerts still fire below the threshold.
+Escalation alerts (`kind=host_escalation`) include failure streak, recovery notes, and manual steps (`make upgrade-host`, `make redeploy-host`, `make recover-host`, `make demote-ops`). Normal watchdog alerts still fire below the threshold.
 
 `make verify-ops` on a host also checks `LOBSTER_WATCHDOG_DEEP_RECOVER=1` in the watchdog unit.
+
+## Scheduler redeploy (Gate D Wave 13)
+
+Tier-3 recovery when tier-1 reload and tier-2 upgrade leave the host degraded:
+
+```bash
+bash scripts/redeploy_host.sh --dry-run           # preview
+make redeploy-host                                 # uninstall + reinstall schedulers
+bash scripts/recover_host.sh --deep --redeploy     # tier-2 then tier-3
+bash scripts/deploy_host.sh --redeploy             # same via orchestrator
+```
+
+| Setting | Effect |
+|---------|--------|
+| `LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1` | Run `redeploy_host.sh` when tier-2 leaves host degraded (default on ops watchdog) |
+
+Redeploy preserves `data/`, `.venv/`, and scheduler mode (re-promotes ops when needed). Does not run `git pull`.
+
+`make verify-ops` on a host also checks `LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1` in the watchdog unit.
 
 ## Host recovery (Gate D Wave 10)
 

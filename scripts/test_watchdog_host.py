@@ -33,7 +33,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_watchdog_host_dry_run_exits_zero() -> None:
     proc = _run("--dry-run")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "Gate D Wave 12 host watchdog" in proc.stdout
+    assert "Gate D Wave 13 host watchdog" in proc.stdout
 
 
 def test_watchdog_host_dry_run_notify_would_alert() -> None:

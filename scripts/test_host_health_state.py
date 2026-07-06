@@ -107,6 +107,17 @@ def test_record_outcome_increments_streak() -> None:
         _restore_host_health(backup)
 
 
+def test_record_outcome_stores_redeploy_flag() -> None:
+    backup = _backup_host_health()
+    try:
+        _restore_host_health(None)
+        record_outcome(1, redeploy_recovery_attempted=True)
+        rows = state.read_jsonl(HOST_HEALTH_LOG)
+        assert rows[-1].get("redeploy_recovery_attempted") is True
+    finally:
+        _restore_host_health(backup)
+
+
 def test_should_escalate_at_threshold() -> None:
     backup = _backup_host_health()
     try:
@@ -153,6 +164,7 @@ def main() -> int:
         test_consecutive_failures_counts_since_last_reset,
         test_consecutive_failures_resets_after_healthy,
         test_record_outcome_increments_streak,
+        test_record_outcome_stores_redeploy_flag,
         test_should_escalate_at_threshold,
         test_watchdog_health_summary_shape,
         test_host_health_state_cli_summary,
