@@ -532,6 +532,57 @@ def render_chalk_html(board: dict) -> str:
         flex-shrink: 0;
       }}
     }}
+    @media (min-width: 768px) {{
+      body {{
+        padding: 1rem 1.25rem;
+      }}
+      .board-frame {{
+        max-width: min(900px, 100%);
+      }}
+      .board {{
+        padding: 1.5rem 1.35rem 1.25rem;
+      }}
+      .board-body {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.5rem 2rem;
+        align-items: start;
+      }}
+      .board-section {{
+        margin-bottom: 0;
+      }}
+      .section-special,
+      .section-trends {{
+        grid-column: 1 / -1;
+      }}
+      .section-special .market-groups {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.25rem 1.5rem;
+      }}
+      .section-special .market-group:not(:last-child) {{
+        border-bottom: none;
+        padding-bottom: 0;
+      }}
+    }}
+    @media (min-width: 1024px) {{
+      .board-frame {{
+        max-width: min(1050px, 100%);
+      }}
+      .board-body {{
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1.25rem 1.75rem;
+      }}
+      .section-special {{
+        grid-column: auto;
+      }}
+      .section-trends {{
+        grid-column: 1 / -1;
+      }}
+      .section-special .market-groups {{
+        grid-template-columns: 1fr;
+      }}
+    }}
     @media (max-width: 480px) {{
       body {{ padding: 0.5rem; }}
       .board-frame {{ padding: 8px; }}
