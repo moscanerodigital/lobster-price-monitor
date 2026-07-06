@@ -171,6 +171,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 
 | Task | Command |
 |------|---------|
+| Upgrade in place (git pull + deps + scheduler reload) | `make upgrade-host` |
 | Health check | `.venv/bin/python scripts/health_check.py` |
 | Health log (daily) | `.venv/bin/python scripts/health_check.py --log` |
 | Manual scrape (no alerts) | `make scrape` |
@@ -179,6 +180,25 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 | Update RALPH learnings | `.venv/bin/python scripts/update_ralph_learnings.py` |
 
 **Cadence:** Weekdays 4×/day (07, 11, 15, 19 ET); weekends 2×/day (09, 17 ET).
+
+### Upgrade in place (Gate D Wave 7)
+
+After `git pull` on a running host, refresh code, dependencies, and scheduler units without changing dry-run vs ops mode or deleting `data/`:
+
+```bash
+# Preview planned actions
+bash scripts/upgrade_host.sh --dry-run
+
+# Run upgrade (pull → install → reload schedulers → scrape → verify)
+make upgrade-host
+
+# Non-git installs (tarball copy)
+bash scripts/upgrade_host.sh --skip-pull
+```
+
+`upgrade_host.sh` detects scheduler mode (dry-run, ops, or none) and reloads matching units. Dry-run hosts run `make verify-deploy`; ops hosts run `make verify-ops`. Also available via `bash scripts/deploy_host.sh --upgrade`.
+
+**Teardown with purge:** `make teardown-host TEARDOWN_FLAGS=--purge-files` or `bash scripts/deploy_host.sh --teardown --purge-files`.
 
 ---
 
@@ -214,6 +234,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 | `make install-scheduler` | Install dry-run scrape + serve + health schedulers (Phase 2) |
 | `make demote-ops` | Roll back ops scheduler to dry-run (no live alerts) |
 | `make teardown-host` | Full teardown: demote ops if loaded → uninstall all schedulers |
+| `make upgrade-host` | In-place upgrade: pull, refresh deps, reload schedulers |
 | `make uninstall-scheduler` | Unload scrape/serve/health schedulers only |
 | `scripts/preflight_secrets.sh` | Check secrets paths without printing values |
 | `make regen-bplus-fixtures` | Regenerate CI Gate B+ fixture data (maintainer-only) |

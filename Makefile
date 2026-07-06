@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify verify-core test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host regen-bplus-fixtures
+.PHONY: install scrape serve health verify verify-core test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host regen-bplus-fixtures
 
 install:
 	python3 -m venv $(VENV)
@@ -48,6 +48,7 @@ verify-core:
 	$(PYTHON) scripts/test_demote_ops.py
 	$(PYTHON) scripts/test_uninstall_scheduler.py
 	$(PYTHON) scripts/test_teardown_host.py
+	$(PYTHON) scripts/test_upgrade_host.py
 	$(PYTHON) scripts/test_preflight_secrets.py
 
 verify: verify-core
@@ -73,7 +74,10 @@ uninstall-scheduler:
 	bash scripts/uninstall_scheduler.sh
 
 teardown-host:
-	bash scripts/teardown_host.sh
+	bash scripts/teardown_host.sh $(TEARDOWN_FLAGS)
+
+upgrade-host:
+	bash scripts/upgrade_host.sh
 
 promote-ops:
 	bash scripts/promote_ops.sh

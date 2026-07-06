@@ -63,6 +63,26 @@ def test_deploy_host_dry_run_teardown() -> None:
     assert "Phase 1: bootstrap" not in proc.stdout
 
 
+def test_deploy_host_dry_run_teardown_purge_files() -> None:
+    proc = _run("--dry-run", "--teardown", "--purge-files")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "--purge-files" in proc.stdout or "purge" in proc.stdout
+
+
+def test_deploy_host_dry_run_upgrade() -> None:
+    proc = _run("--dry-run", "--upgrade", "--skip-health")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "Host upgrade" in proc.stdout
+    assert "upgrade_host.sh" in proc.stdout or "Pulling latest code" in proc.stdout
+    assert "Phase 1: bootstrap" not in proc.stdout
+
+
+def test_deploy_host_teardown_and_upgrade_mutually_exclusive() -> None:
+    proc = _run("--teardown", "--upgrade")
+    assert proc.returncode == 1
+    assert "mutually exclusive" in proc.stderr.lower() or "mutually exclusive" in proc.stdout.lower()
+
+
 def main() -> int:
     tests = [
         test_deploy_host_dry_run_phase1,
@@ -71,6 +91,9 @@ def main() -> int:
         test_deploy_host_dry_run_propagates_to_subscripts,
         test_deploy_host_invalid_phase,
         test_deploy_host_dry_run_teardown,
+        test_deploy_host_dry_run_teardown_purge_files,
+        test_deploy_host_dry_run_upgrade,
+        test_deploy_host_teardown_and_upgrade_mutually_exclusive,
     ]
     failed = 0
     for test in tests:

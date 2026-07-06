@@ -107,6 +107,7 @@ maybe_demote() {
 
 uninstall_schedulers() {
   echo "--- Uninstalling all schedulers ---"
+  [[ "$PURGE_FILES" == true ]] && echo "Purge installed unit files after unload (--purge-files)"
   local flags=(--lobster-root "$LOBSTER_ROOT")
   [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
   [[ "$SKIP_HEALTH" == true ]] && flags+=(--skip-health)
