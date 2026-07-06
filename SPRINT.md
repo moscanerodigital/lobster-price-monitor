@@ -4,7 +4,20 @@
 **Baseline commit:** `bd7771b` (`main`)  
 **Prior session:** ~15 rapid commits (`0f73eee` → `bd7771b`) — caps, oysters, logos, layout, Five Islands manual import  
 **Status at sprint start:** ~70–80% to production; board serves at `:8765`  
-**Wave 3 complete (2026-07-06):** B-05 runtime guard, B-04 tests, C-03 visual QA, D-04 scrape (partial coverage), E-03 dev verify + serving-host runbook below.
+**Wave 3 complete (2026-07-06):** B-05 runtime guard, B-04 tests, C-03 visual QA, D-04 scrape (partial coverage), E-03 dev verify + serving-host runbook below.  
+**Wave 4 complete (2026-07-06):** A-05 menu Gate B, A-06 oyster units, D-05 FB fetch (6/9 curl markets), E-04 deploy at `~/lobster-price-monitor` (MacBook Pro stand-in; Mac Mini/Chromebox use same runbook).
+
+### Wave 4 completion metrics (dev scrape 2026-07-06T18:22Z)
+
+| Metric | Result | D-04 bar | Notes |
+|--------|--------|----------|-------|
+| Lobster headlines | 8 | 8 | All markets with lobster data |
+| Oysters (board) | 3 | ≥5 | 25 gated specials in prices.jsonl; board render shows 19 |
+| Specials (board) | 19 | ≥25 | 4 markets on specials section |
+| Gated rows | 54 | — | Gate B menu path uses raw confidence for FB menu posts |
+| FB curl markets | 6/9 | ≥6/9 | Ancient Mariner, Pine Tree, Harbor (×2), Free Range, SoPo |
+
+**Serving host (`~/lobster-price-monitor`):** `make install-scheduler`, full scrape, `make verify-production-ci` pass, `make status-host` pass, serve on `:8765`. D-04 display bar still partial — board filters drop 6 specials; oyster FB rows need parser follow-up.
 
 ### Wave 3 completion metrics (dev scrape 2026-07-06T18:10Z)
 
@@ -225,7 +238,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** Documented one-command import; `make import-five-islands` target; serving-host runbook step; prices verified against wharf reality.  
 **Deps:** None
 
-### D-04: Full scrape + board publish (S) — **PARTIAL** (Wave 3: scrape + guard; below oyster/special targets — see metrics above)
+### D-04: Full scrape + board publish (S) — **PARTIAL** (Wave 4: 25 gated specials, 19 on board; oysters 3/5)
 
 **Problem:** Serving host and git only get `board.html`; local state not portable.
 

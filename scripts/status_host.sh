@@ -403,8 +403,14 @@ collect_scrape_freshness() {
   fi
 
   local py="${LOBSTER_ROOT}/.venv/bin/python"
+  if [[ ! -x "$py" ]]; then
+    py="$(command -v python3 || true)"
+  fi
   local result
-  result="$("$py" - <<'PY'
+  if [[ -z "$py" ]]; then
+    result="||"
+  else
+    result="$("$py" - "$LOBSTER_ROOT" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone, timedelta
@@ -447,7 +453,8 @@ age_h = (now - dt).total_seconds() / 3600.0
 stale = age_h > 24.0
 print(f"{last_ts}|{age_h:.1f}|{1 if stale else 0}")
 PY
-"$LOBSTER_ROOT")"
+)"
+  fi
 
   SCRAPE_TS="${result%%|*}"
   local rest="${result#*|}"
