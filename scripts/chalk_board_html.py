@@ -613,10 +613,17 @@ def render_chalk_html(board: dict) -> str:
         margin-top: var(--space-md);
       }}
       .section-special .market-groups {{
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: var(--space-md) var(--space-lg);
+        columns: 3;
+        column-gap: var(--space-lg);
         align-items: start;
+      }}
+      .section-special .market-group {{
+        break-inside: avoid;
+        -webkit-column-break-inside: avoid;
+        page-break-inside: avoid;
+        display: inline-block;
+        width: 100%;
+        margin-bottom: var(--space-sm);
       }}
       .section-special .market-group--wide .price-list {{
         display: grid;
@@ -676,6 +683,7 @@ def render_chalk_html(board: dict) -> str:
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.3rem 0.5rem;
+        align-items: start;
       }}
       .section-oyster .market-groups {{
         display: grid;
@@ -683,8 +691,17 @@ def render_chalk_html(board: dict) -> str:
         gap: 0.3rem;
       }}
       .section-special .market-groups {{
-        grid-template-columns: minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 1.5fr);
-        gap: 0.3rem 0.65rem;
+        columns: 3;
+        column-gap: 0.65rem;
+        align-items: start;
+      }}
+      .section-special .market-group {{
+        break-inside: avoid;
+        -webkit-column-break-inside: avoid;
+        page-break-inside: avoid;
+        display: inline-block;
+        width: 100%;
+        margin-bottom: 0.25rem;
       }}
       .market-sign {{
         margin: 0.05rem 0 0.1rem;

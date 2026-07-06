@@ -74,6 +74,24 @@ def test_board_has_three_sections() -> None:
         assert f"section-{section}" in html
 
 
+def test_no_chowder_lb_unit_mismatch() -> None:
+    html = _board_html()
+    assert "Chowder $9.99/pint" not in html
+    assert "Haddock Chowder</span>" in html or "Haddock Chowder<span" in html
+    chowder_rows = [
+        m.group(0)
+        for m in re.finditer(
+            r'<li class="price-row section-special">.*?</li>',
+            html,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if "chowder" in m.group(0).lower()
+    ]
+    for row in chowder_rows:
+        if "/lb" in row.lower() and "chowder" in row.lower():
+            raise AssertionError(f"chowder row shows /lb: {row[:200]}")
+
+
 def test_live_section_minimums() -> None:
     if not os.environ.get("BOARD_QA_LIVE"):
         return
@@ -90,6 +108,7 @@ def main() -> int:
         test_market_groups_no_nested_scroll,
         test_desktop_logo_size_at_least_80px,
         test_board_has_three_sections,
+        test_no_chowder_lb_unit_mismatch,
         test_live_section_minimums,
     ]
     failed = 0

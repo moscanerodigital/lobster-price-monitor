@@ -170,6 +170,31 @@ def _demo_market_rows(*, oysters: bool = False) -> list[dict]:
     ]
 
 
+_SNIPPET_UNIT_RE = re.compile(
+    r"\$[\d.,]+\s*/\s*(pint|pints|ea|each|doz|dozen|lb)\b",
+    re.IGNORECASE,
+)
+
+
+def _unit_from_snippet(row: dict) -> str | None:
+    """Prefer explicit /pint (etc.) in snippet when stored unit is wrong."""
+    text = " ".join(
+        str(row.get(field) or "")
+        for field in ("catalog_title", "snippet")
+    )
+    match = _SNIPPET_UNIT_RE.search(text)
+    if not match:
+        return None
+    unit = match.group(1).lower()
+    if unit in {"each"}:
+        return "ea"
+    if unit in {"pints"}:
+        return "pint"
+    if unit in {"dozen"}:
+        return "doz"
+    return unit
+
+
 def format_price(
     price: float,
     unit: str,
@@ -185,6 +210,8 @@ def format_price(
         return f"{body} ea"
     if unit == "doz":
         return f"{body}/doz"
+    if unit == "pint":
+        return f"{body}/pint"
     return f"{body}/lb"
 
 
@@ -215,6 +242,8 @@ def price_parts(
         return amount, "ea"
     if unit == "doz":
         return amount, "/doz"
+    if unit == "pint":
+        return amount, "/pint"
     return amount, "/lb"
 
 
@@ -320,6 +349,9 @@ def _display_values_from_row(row: dict) -> tuple[float, str, float | None, bool]
     if display_price is not None and display_unit:
         price = float(display_price)
         unit = str(display_unit)
+        snippet_unit = _unit_from_snippet(row)
+        if snippet_unit and unit == "lb" and snippet_unit != "lb":
+            unit = snippet_unit
         high = float(display_high) if display_high is not None else None
         is_range = bool(
             row.get("price_is_range")
@@ -334,6 +366,9 @@ def _display_values_from_row(row: dict) -> tuple[float, str, float | None, bool]
 
     price = float(row.get("price", 0))
     unit = str(row.get("unit", "lb"))
+    snippet_unit = _unit_from_snippet(row)
+    if snippet_unit and unit == "lb" and snippet_unit != "lb":
+        unit = snippet_unit
     high = row.get("price_high") or row.get("raw_price_high")
     if high is not None:
         high = float(high)

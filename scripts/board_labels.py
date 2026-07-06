@@ -256,10 +256,8 @@ def _format_special_freshness(ts: str, source: str) -> str:
     now = datetime.now(timezone.utc)
     age = now - dt.astimezone(timezone.utc)
     is_fb = source not in ("web", "manual", "reference")
-    if age < timedelta(hours=30) and not is_fb:
+    if age < timedelta(hours=30):
         return ""
-    if age < timedelta(hours=30) and is_fb:
-        return "FB"
     if age < timedelta(days=3):
         day = dt.astimezone().strftime("%a")
         return f"{day} · FB" if is_fb else day
@@ -331,12 +329,27 @@ def _special_display_label(row: dict, fallback: str) -> str:
     colon_match = re.match(r"^(.+?):\s*\$", title)
     if colon_match:
         title = colon_match.group(1).strip()
-    title = re.sub(r"\s*\$[\d.,]+(?:\s*/?\s*(?:lb|ea|doz|each)\.?)?\s*$", "", title, flags=re.I).strip()
+    title = re.sub(
+        r"\s*\$[\d.,]+(?:\s*/?\s*(?:lb|ea|doz|each|pint|pints|quart)\.?)?\s*$",
+        "",
+        title,
+        flags=re.I,
+    ).strip()
+    title = re.sub(
+        r"\s+\$[\d.,]+(?:\s*/?\s*(?:lb|ea|doz|each|pint|pints|quart)\.?)?",
+        "",
+        title,
+        flags=re.I,
+    ).strip()
     title = re.sub(r"\s*\d+(?:\.\d+)?\s*lb\.?\s*$", "", title, flags=re.I).strip()
     title = re.sub(r"\s*\$\s*$", "", title).strip()
     title = re.sub(r"\s+(?:are|is)\s*$", "", title, flags=re.I).strip()
+    title = re.sub(r"\s*[-–—]\s*$", "", title).strip()
     if title.lower().startswith("fresh "):
         title = title[6:].strip()
+    key = str(row.get("key", ""))
+    if key in {"clams", "steamers"} and "steamer" in title.lower():
+        title = "Steamer clams"
     if _is_cryptic_slash_label(title):
         title = _expand_slash_abbrev(title)
     return title or fallback

@@ -112,6 +112,21 @@ def test_special_display_label_strips_price_and_fresh_prefix():
     assert _special_display_label(catalog, "Haddock") == "Medium Haddock Fillet"
     tuna = {"catalog_title": "Fresh Bluefin Tuna (sushi-grade)", "key": "tuna"}
     assert _special_display_label(tuna, "Tuna") == "Bluefin Tuna (sushi-grade)"
+    chowder = {"snippet": "Haddock Chowder $9.99/pint", "key": "chowder"}
+    assert _special_display_label(chowder, "Chowder") == "Haddock Chowder"
+    clams = {"snippet": "Fresh steamer clams - $8.99/lb", "key": "clams"}
+    assert _special_display_label(clams, "Clams") == "Steamer clams"
+
+
+def test_chowder_pint_unit_on_board():
+    from board_render import build_board, price_parts
+
+    row = {"snippet": "Haddock Chowder $9.99/pint", "unit": "lb", "price": 9.99}
+    from board_render import _unit_from_snippet
+
+    assert _unit_from_snippet(row) == "pint"
+    amount, unit_label = price_parts(9.99, "pint")
+    assert unit_label == "/pint"
 
 
 def test_salvage_mashup_special_rows():
@@ -250,6 +265,7 @@ def main() -> int:
         test_is_clean_special_row_rejects_fb_mashup,
         test_is_clean_special_row_accepts_catalog_and_web_snippets,
         test_special_display_label_strips_price_and_fresh_prefix,
+        test_chowder_pint_unit_on_board,
         test_special_display_label_expands_slash_abbrev,
         test_is_publishable_special_label_rejects_unexpanded_slash_abbrev,
         test_oyster_row_secondary_unit_aware,
