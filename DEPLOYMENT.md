@@ -127,7 +127,39 @@ bash scripts/deploy_host.sh --watchdog     # same via orchestrator
 
 Watchdog reuses `status_host.sh --json` checks. Deduped alerts log to `alerts_sent.jsonl` with `kind=host_watchdog`.
 
-**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
+**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`. Set `LOBSTER_WATCHDOG_RECOVER=1` to enable auto-recovery before alerting.
+
+## Host recovery (Gate D Wave 10)
+
+Status-driven auto-recovery for degraded hosts:
+
+```bash
+bash scripts/recover_host.sh              # check + remediate
+bash scripts/recover_host.sh --dry-run    # preview actions
+bash scripts/recover_host.sh --notify     # Telegram summary of recovery
+make recover-host
+bash scripts/deploy_host.sh --recover     # same via orchestrator
+```
+
+| Flag | Effect |
+|------|--------|
+| `--dry-run` | Preview actions; always exit 0 |
+| `--notify` | Send deduped Telegram summary (requires secrets) |
+| `--force` | Bypass 6h recovery-alert dedupe window |
+
+Recovery actions (based on `status_host.sh --json`):
+
+| Condition | Action |
+|-----------|--------|
+| Serve not active | Reload serve unit |
+| Scrape stale (>24h) | Run confirmation scrape |
+| Scrape scheduler not loaded | Reload scrape scheduler |
+| Health not ready | Trigger scrape + re-run health check |
+| Ops host missing watchdog | Install watchdog timer |
+
+Does not auto-fix fatal preflight errors or missing secrets.
+
+**Watchdog integration:** `bash scripts/watchdog_host.sh --recover --notify` runs recovery before re-checking status. Scheduled watchdog defaults to alert-only (`LOBSTER_WATCHDOG_RECOVER=0`).
 
 ## Dry-run scrape (no Telegram)
 

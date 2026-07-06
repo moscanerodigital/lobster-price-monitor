@@ -114,6 +114,83 @@ def _recent_watchdog_alert(key: str, *, within_hours: int = DEDUPE_HOURS) -> boo
     return False
 
 
+def _recent_recovery_alert(key: str, *, within_hours: int = DEDUPE_HOURS) -> bool:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=within_hours)
+    for row in state.read_jsonl("alerts_sent.jsonl"):
+        if row.get("kind") != "host_recovery":
+            continue
+        if row.get("key") != key:
+            continue
+        ts = row.get("ts") or row.get("observed_at")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if dt.astimezone(timezone.utc) >= cutoff:
+            return True
+    return False
+
+
+def alert_host_recovery(
+    *,
+    status_before: dict,
+    status_after: dict,
+    actions_taken: list[str],
+    exit_code_before: int,
+    exit_code_after: int,
+    force: bool = False,
+    dry_run: bool = False,
+) -> bool:
+    """Send deduped Telegram summary of recovery attempt. Returns True if sent."""
+    if not actions_taken:
+        return False
+
+    key = f"recovery|{reason_hash(status_before)}|{'|'.join(actions_taken)}"
+    if not force and _recent_recovery_alert(key):
+        return False
+
+    label = "RECOVERED" if exit_code_after == 0 else "PARTIAL"
+    lobster_root = status_after.get("lobster_root", status_before.get("lobster_root", ""))
+    git_rev = status_after.get("git_revision", status_before.get("git_revision", "n/a"))
+    action_lines = "\n".join(f"· {a}" for a in actions_taken)
+    text = (
+        f"🔧 *HOST RECOVERY* — lobster-price-monitor\n"
+        f"before: exit {exit_code_before} → after: exit {exit_code_after} ({label})\n"
+        f"{action_lines}\n"
+        f"LOBSTER_ROOT: {lobster_root}\n"
+        f"rev: {git_rev}\n"
+        f"run: make status-host"
+    )
+
+    if dry_run:
+        print(f"[dry-run] would alert recovery: {key}")
+        print(text)
+        return True
+
+    now = datetime.now(timezone.utc).isoformat()
+    if send_telegram(text):
+        state.append_jsonl(
+            "alerts_sent.jsonl",
+            {
+                "key": key,
+                "kind": "host_recovery",
+                "exit_code_before": exit_code_before,
+                "exit_code_after": exit_code_after,
+                "actions_taken": actions_taken,
+                "lobster_root": lobster_root,
+                "git_revision": git_rev,
+                "ts": now,
+                "observed_at": now,
+            },
+        )
+        return True
+    return False
+
+
 def alert_host_watchdog(
     *,
     status: dict,
@@ -169,26 +246,54 @@ def alert_host_watchdog(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Send host watchdog Telegram alert")
-    parser.add_argument("--status-json", required=True, help="JSON from status_host.sh")
-    parser.add_argument("--exit-code", type=int, required=True)
+    parser = argparse.ArgumentParser(description="Send host watchdog/recovery Telegram alerts")
+    parser.add_argument("--status-json", required=True, help="JSON from status_host.sh (before recovery)")
+    parser.add_argument("--exit-code", type=int, help="Exit code (watchdog mode)")
+    parser.add_argument("--recovery", action="store_true", help="Send recovery summary instead of watchdog")
+    parser.add_argument("--status-json-after", help="JSON after recovery (recovery mode)")
+    parser.add_argument("--exit-code-before", type=int, help="Exit code before recovery")
+    parser.add_argument("--exit-code-after", type=int, help="Exit code after recovery")
+    parser.add_argument(
+        "--actions-taken",
+        nargs="*",
+        default=[],
+        help="Recovery actions performed",
+    )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.recovery:
+        status_before = json.loads(args.status_json)
+        status_after = json.loads(args.status_json_after or args.status_json)
+        alert_host_recovery(
+            status_before=status_before,
+            status_after=status_after,
+            actions_taken=list(args.actions_taken),
+            exit_code_before=int(args.exit_code_before or 1),
+            exit_code_after=int(args.exit_code_after or 0),
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+        return 0
+
+    if args.exit_code is None:
+        print("ERROR: --exit-code required for watchdog alerts", file=sys.stderr)
+        return 1
 
     status = json.loads(args.status_json)
     reasons = build_watchdog_reasons(status)
     if not reasons:
         return 0
 
-    sent = alert_host_watchdog(
+    alert_host_watchdog(
         status=status,
         exit_code=args.exit_code,
         reasons=reasons,
         force=args.force,
         dry_run=args.dry_run,
     )
-    return 0 if sent or not args.dry_run else 0
+    return 0
 
 
 if __name__ == "__main__":

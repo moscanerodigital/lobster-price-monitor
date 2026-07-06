@@ -172,6 +172,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 | Task | Command |
 |------|---------|
 | Host status (scheduler, health, scrape age) | `make status-host` |
+| Host auto-recovery (reload serve/scrape, trigger scrape) | `make recover-host` |
 | Upgrade in place (git pull + deps + scheduler reload) | `make upgrade-host` |
 | Health check | `.venv/bin/python scripts/health_check.py` |
 | Health log (daily) | `.venv/bin/python scripts/health_check.py --log` |
@@ -236,6 +237,26 @@ bash scripts/deploy_host.sh --watchdog
 
 Ops promotion (`make promote-ops`) installs a watchdog timer (2×/day) with `LOBSTER_WATCHDOG_ALERTS=1`. Alerts are deduped for 6 hours per reason set. Dry-run Phase 2 hosts can opt in with `bash scripts/install_scheduler.sh --with-watchdog`.
 
+### Host auto-recovery (Gate D Wave 10)
+
+Status-driven remediation when the host is degraded:
+
+```bash
+# Preview recovery actions
+bash scripts/recover_host.sh --dry-run
+
+# Run recovery (reload serve, scrape scheduler, trigger scrape as needed)
+make recover-host
+
+# Recovery + Telegram summary of actions taken
+bash scripts/recover_host.sh --notify
+
+# Via deploy orchestrator
+bash scripts/deploy_host.sh --recover
+```
+
+Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --recover --notify`, or set `LOBSTER_WATCHDOG_RECOVER=1` in the watchdog scheduler (default off).
+
 **Teardown with purge:** `make teardown-host TEARDOWN_FLAGS=--purge-files` or `bash scripts/deploy_host.sh --teardown --purge-files`.
 
 ---
@@ -274,6 +295,7 @@ Ops promotion (`make promote-ops`) installs a watchdog timer (2×/day) with `LOB
 | `make teardown-host` | Full teardown: demote ops if loaded → uninstall all schedulers |
 | `make upgrade-host` | In-place upgrade: pull, refresh deps, reload schedulers |
 | `make status-host` | Read-only host diagnostics (scheduler, health, scrape age) |
+| `make recover-host` | Host auto-recovery for degraded states |
 | `make watchdog-host` | Host watchdog check (add `--notify` for Telegram alert) |
 | `make uninstall-scheduler` | Unload scrape/serve/health schedulers only |
 | `scripts/preflight_secrets.sh` | Check secrets paths without printing values |

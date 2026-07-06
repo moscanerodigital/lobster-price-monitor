@@ -7,13 +7,17 @@ LOBSTER_ROOT="${LOBSTER_ROOT:-$ROOT}"
 DRY_RUN=false
 NOTIFY=false
 FORCE=false
+RECOVER=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/watchdog_host.sh [--dry-run] [--notify] [--force] [--lobster-root PATH]
+Usage: scripts/watchdog_host.sh [--dry-run] [--notify] [--recover] [--force] [--lobster-root PATH]
 
 Run status_host.sh checks and optionally send deduped Telegram alerts when
 the host is degraded (exit 1) or fatal (exit 2).
+
+With --recover, run recover_host.sh before re-checking status (also enabled
+by LOBSTER_WATCHDOG_RECOVER=1 in the watchdog scheduler).
 
 Default: check-only (no Telegram). Use --notify or set LOBSTER_WATCHDOG_ALERTS=1
 to send alerts (requires Telegram secrets).
@@ -38,6 +42,10 @@ while [[ $# -gt 0 ]]; do
       FORCE=true
       shift
       ;;
+    --recover)
+      RECOVER=true
+      shift
+      ;;
     --lobster-root)
       LOBSTER_ROOT="$2"
       shift 2
@@ -56,6 +64,10 @@ done
 
 if [[ "${LOBSTER_WATCHDOG_ALERTS:-}" == "1" || "${LOBSTER_WATCHDOG_ALERTS:-}" == "true" ]]; then
   NOTIFY=true
+fi
+
+if [[ "${LOBSTER_WATCHDOG_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_RECOVER:-}" == "true" ]]; then
+  RECOVER=true
 fi
 
 log() {
@@ -110,9 +122,33 @@ maybe_notify() {
   "${LOBSTER_ROOT}/.venv/bin/python" "${LOBSTER_ROOT}/scripts/watchdog_alert.py" "${alert_flags[@]}"
 }
 
+maybe_recover() {
+  local status_code="$1"
+
+  if [[ "$RECOVER" != true ]]; then
+    return 0
+  fi
+  if [[ "$status_code" -eq 0 ]]; then
+    return 0
+  fi
+  if [[ "$status_code" -ge 2 ]]; then
+    log "Watchdog: fatal preflight — skipping recovery"
+    return 0
+  fi
+
+  log "--- Watchdog: attempting host recovery ---"
+  local recover_flags=(--lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && recover_flags+=(--dry-run)
+  [[ "$FORCE" == true ]] && recover_flags+=(--force)
+  bash "${LOBSTER_ROOT}/scripts/recover_host.sh" "${recover_flags[@]}" || true
+}
+
 main() {
   log "=== Gate D Wave 9 host watchdog ==="
   log "LOBSTER_ROOT=${LOBSTER_ROOT}"
+  if [[ "$RECOVER" == true ]]; then
+    log "Watchdog: auto-recovery enabled"
+  fi
 
   if [[ ! -x "${LOBSTER_ROOT}/.venv/bin/python" && "$DRY_RUN" != true ]]; then
     echo "ERROR: venv not found at ${LOBSTER_ROOT}/.venv — run scripts/bootstrap_host.sh first" >&2
@@ -120,6 +156,10 @@ main() {
   fi
 
   run_status
+  maybe_recover "$STATUS_CODE"
+  if [[ "$RECOVER" == true && "$STATUS_CODE" -ne 0 ]]; then
+    run_status
+  fi
   maybe_notify "$STATUS_CODE" || true
 
   if [[ "$DRY_RUN" == true ]]; then

@@ -35,6 +35,7 @@ make verify-ops-ci                         # Gate D smoke (learnings + ops verif
 make deploy-host                           # host: phases 1–2 bootstrap + scheduler
 make upgrade-host                          # host: in-place pull + deps + scheduler reload
 make status-host                           # host: read-only scheduler/health diagnostics
+make recover-host                          # host: auto-recovery for degraded states
 make watchdog-host                         # host: status check + optional Telegram alert
 make teardown-host                         # host: remove all schedulers
 make bootstrap-host                        # host: phase 1 only
