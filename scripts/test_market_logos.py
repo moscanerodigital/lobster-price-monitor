@@ -41,17 +41,34 @@ def test_logo_data_uri_roundtrip():
 def test_market_sign_with_logo():
     html = _html_market_sign("Pine Tree", section_key="lobster", tilt=-1.2)
     assert 'class="market-sign-logo"' in html
-    assert "market-sign-name" not in html
+    assert "market-sign-frame" not in html
+    assert "market-sign-board" not in html
+    assert "market-sign--logo" in html
     assert 'alt="Pine Tree"' in html
     assert "data:image/" in html
-    assert "has-logo" in html
 
 
 def test_market_sign_without_logo():
     html = _html_market_sign("Unknown Market", section_key="oyster", tilt=0.0)
     assert "market-sign-logo" not in html
+    assert "market-sign-frame" not in html
+    assert "market-sign-board" not in html
+    assert "market-sign--text" in html
+    assert "market-sign-label" in html
     assert "Unknown Market" in html
-    assert "has-logo" not in html
+
+
+def test_placeholder_logo_rejected():
+    from market_logos import is_placeholder_logo, logo_path_for_short
+
+    path = logo_path_for_short("Two Tides")
+    if path is not None:
+        assert not is_placeholder_logo(path)
+    else:
+        # Placeholder on disk should not be served.
+        raw = LOGOS_DIR / "two-tides.webp"
+        if raw.is_file():
+            assert is_placeholder_logo(raw)
 
 
 def test_render_chalk_includes_logos_for_known_markets():

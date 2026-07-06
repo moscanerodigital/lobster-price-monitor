@@ -37,6 +37,23 @@ FB_HANDLE_SLUGS: dict[str, str] = {
 }
 
 _IMAGE_EXTS = (".webp", ".png", ".jpg", ".jpeg")
+_PLACEHOLDER_MAX_BYTES = 1024
+
+# FB page IDs that return a real profile image (not the numeric scrape handle).
+LOGO_FB_OVERRIDES: dict[str, str] = {
+    "two-tides": "99429853901",
+}
+
+
+def is_placeholder_logo(path: Path) -> bool:
+    """True when file is too small or likely a generic FB silhouette."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return True
+    if size < _PLACEHOLDER_MAX_BYTES:
+        return True
+    return False
 
 
 def logo_path_for_short(market_short: str) -> Path | None:
@@ -46,7 +63,7 @@ def logo_path_for_short(market_short: str) -> Path | None:
         return None
     for ext in _IMAGE_EXTS:
         path = LOGOS_DIR / f"{slug}{ext}"
-        if path.is_file() and path.stat().st_size > 0:
+        if path.is_file() and path.stat().st_size > 0 and not is_placeholder_logo(path):
             return path
     return None
 
