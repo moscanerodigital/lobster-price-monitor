@@ -14,6 +14,8 @@ OPS_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape.ops"
 DRY_RUN_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape"
 OPS_SCRAPE_TIMER="lobster-price-monitor-scrape.ops.timer"
 DRY_RUN_SCRAPE_TIMER="lobster-price-monitor-scrape.timer"
+WATCHDOG_LABEL="com.erik.lobster-price-monitor.watchdog"
+WATCHDOG_TIMER="lobster-price-monitor-watchdog.timer"
 SCHEDULER_MODE="none"
 
 usage() {
@@ -296,6 +298,66 @@ reload_serve_and_health_linux() {
   fi
 }
 
+reload_watchdog_macos() {
+  local agents="${HOME}/Library/LaunchAgents"
+  local deploy="${LOBSTER_ROOT}/deploy/launchd"
+  local watchdog_src="${deploy}/com.erik.lobster-price-monitor.watchdog.plist"
+  local watchdog_plist="${agents}/com.erik.lobster-price-monitor.watchdog.plist"
+
+  if ! launchctl list 2>/dev/null | grep -q "${WATCHDOG_LABEL}$"; then
+    echo "Watchdog agent not loaded — skipping reload"
+    return 0
+  fi
+
+  if [[ ! -f "$watchdog_src" ]]; then
+    echo "ERROR: watchdog plist not found at $watchdog_src" >&2
+    exit 1
+  fi
+
+  run mkdir -p "$agents"
+  substitute_unit "$watchdog_src" "$watchdog_plist"
+  run launchctl unload "$watchdog_plist" || true
+  run launchctl load "$watchdog_plist"
+  echo "macOS watchdog reloaded: $watchdog_plist"
+}
+
+reload_watchdog_linux() {
+  if ! systemctl is-enabled "$WATCHDOG_TIMER" &>/dev/null; then
+    echo "Watchdog timer not enabled — skipping reload"
+    return 0
+  fi
+
+  local deploy="${LOBSTER_ROOT}/deploy/systemd"
+  for src in \
+    "${deploy}/lobster-price-monitor-watchdog.service" \
+    "${deploy}/lobster-price-monitor-watchdog.timer"; do
+    if [[ ! -f "$src" ]]; then
+      echo "ERROR: watchdog unit not found at $src" >&2
+      exit 1
+    fi
+    install_linux_unit "$src"
+  done
+
+  run sudo systemctl daemon-reload
+  run sudo systemctl enable --now "$WATCHDOG_TIMER"
+  echo "Linux watchdog reloaded: $WATCHDOG_TIMER"
+}
+
+reload_watchdog() {
+  echo "--- Reloading watchdog (if loaded) ---"
+  case "$(uname -s)" in
+    Darwin)
+      reload_watchdog_macos
+      ;;
+    Linux)
+      reload_watchdog_linux
+      ;;
+    *)
+      echo "WARNING: unknown OS — skipping watchdog reload"
+      ;;
+  esac
+}
+
 reload_ops_scheduler() {
   echo "--- Reloading ops schedulers ---"
   case "$(uname -s)" in
@@ -392,6 +454,7 @@ main() {
   pull_code
   refresh_deps
   reload_schedulers
+  reload_watchdog
   confirm_scrape
   run_verify
 

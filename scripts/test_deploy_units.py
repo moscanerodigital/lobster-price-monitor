@@ -77,8 +77,32 @@ def test_systemd_timers_exist() -> None:
         "lobster-price-monitor-scrape.timer",
         "lobster-price-monitor-scrape.ops.timer",
         "lobster-price-monitor-health.timer",
+        "lobster-price-monitor-watchdog.timer",
     ):
         assert (SYSTEMD / name).exists(), f"{name} missing"
+
+
+def test_watchdog_units_exist() -> None:
+    watchdog_plist = LAUNCHD / "com.erik.lobster-price-monitor.watchdog.plist"
+    assert watchdog_plist.exists(), "watchdog launchd plist missing"
+    text = watchdog_plist.read_text(encoding="utf-8")
+    assert "watchdog_host.sh" in text
+    assert "--notify" in text
+    assert "LOBSTER_WATCHDOG_ALERTS" in text
+    assert "LOBSTER_ROOT" in text
+
+    watchdog_service = SYSTEMD / "lobster-price-monitor-watchdog.service"
+    assert watchdog_service.exists(), "watchdog systemd service missing"
+    svc_text = watchdog_service.read_text(encoding="utf-8")
+    assert "LOBSTER_ROOT" in svc_text
+    assert "LOBSTER_WATCHDOG_ALERTS=1" in svc_text
+    assert "/opt/lobster-price-monitor" not in svc_text
+
+    watchdog_timer = SYSTEMD / "lobster-price-monitor-watchdog.timer"
+    assert watchdog_timer.exists(), "watchdog systemd timer missing"
+    timer_text = watchdog_timer.read_text(encoding="utf-8")
+    assert "10:00:00" in timer_text
+    assert "22:00:00" in timer_text
 
 
 def test_health_units_exist() -> None:
@@ -103,6 +127,7 @@ def main() -> int:
         test_systemd_ops_timer_exists_and_references_ops_service,
         test_systemd_services_use_lobster_root_placeholder,
         test_systemd_timers_exist,
+        test_watchdog_units_exist,
         test_health_units_exist,
         test_crontab_example_uses_run_scrape_sh,
     ]

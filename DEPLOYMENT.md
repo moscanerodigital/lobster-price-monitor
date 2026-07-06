@@ -107,6 +107,28 @@ bash scripts/deploy_host.sh --status     # same via orchestrator
 
 Exit codes: `0` healthy · `1` degraded · `2` fatal preflight (missing venv, bad `LOBSTER_ROOT`).
 
+## Host watchdog (Gate D Wave 9)
+
+Status-driven Telegram alerts when the host is unhealthy:
+
+```bash
+bash scripts/watchdog_host.sh              # check only
+bash scripts/watchdog_host.sh --notify     # alert if degraded/fatal
+bash scripts/watchdog_host.sh --notify --dry-run  # preview
+make watchdog-host
+bash scripts/deploy_host.sh --watchdog     # same via orchestrator
+```
+
+| Flag | Effect |
+|------|--------|
+| `--notify` | Send Telegram when exit code > 0 (also enabled by `LOBSTER_WATCHDOG_ALERTS=1`) |
+| `--force` | Bypass 6h dedupe window |
+| `--dry-run` | Check only; print would-alert without sending |
+
+Watchdog reuses `status_host.sh --json` checks. Deduped alerts log to `alerts_sent.jsonl` with `kind=host_watchdog`.
+
+**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
+
 ## Dry-run scrape (no Telegram)
 
 ```bash
@@ -184,6 +206,8 @@ Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Li
 | Linux systemd | `deploy/systemd/lobster-price-monitor-scrape.service` + `.timer` | `deploy/systemd/lobster-price-monitor-scrape.ops.service` + `.ops.timer` | `deploy/systemd/lobster-price-monitor-serve.service` | `lobster-price-monitor-health.service` + `.timer` |
 | macOS launchd | `deploy/launchd/com.erik.lobster-price-monitor.scrape.plist` (Label: `…scrape`) | `deploy/launchd/com.erik.lobster-price-monitor.scrape.ops.plist` (Label: `…scrape.ops`) | `deploy/launchd/com.erik.lobster-price-monitor.serve.plist` | `com.erik.lobster-price-monitor.health.plist` |
 | cron | `deploy/crontab.example` (`run_scrape.sh`, no alerts) | `LOBSTER_ALERTS=1` + `run_scrape.sh` (see commented ops block) | run serve via systemd/launchd or `@reboot` | manual or health unit |
+
+**Watchdog (ops, Wave 9):** `deploy/launchd/com.erik.lobster-price-monitor.watchdog.plist` or `deploy/systemd/lobster-price-monitor-watchdog.service` + `.timer`. Installed automatically on `make promote-ops`; opt in on dry-run with `install_scheduler.sh --with-watchdog`.
 
 **One-command install (recommended):**
 

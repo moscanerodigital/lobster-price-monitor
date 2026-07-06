@@ -140,6 +140,15 @@ verify_ops() {
   make -C "$LOBSTER_ROOT" verify-ops
 }
 
+install_watchdog() {
+  echo "--- Installing watchdog timer (ops host) ---"
+  local flags=(--with-watchdog --watchdog-only --skip-verify)
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/install_scheduler.sh" \
+    --lobster-root "$LOBSTER_ROOT" \
+    "${flags[@]}"
+}
+
 main() {
   echo "=== Gate D ops promotion ==="
   preflight
@@ -159,6 +168,7 @@ main() {
 
   confirm_scrape
   verify_ops
+  install_watchdog
   echo "=== Ops promotion succeeded ==="
 }
 

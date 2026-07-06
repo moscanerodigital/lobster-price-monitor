@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.erik.lobster-price-monitor.watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>LOBSTER_ROOT/scripts/watchdog_host.sh</string>
+    <string>--notify</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LOBSTER_WATCHDOG_ALERTS</key>
+    <string>1</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>LOBSTER_ROOT</string>
+
+  <!-- Watchdog: 10:00 and 22:00 local -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key><integer>10</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>22</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>LOBSTER_ROOT/logs/watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>LOBSTER_ROOT/logs/watchdog.err</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

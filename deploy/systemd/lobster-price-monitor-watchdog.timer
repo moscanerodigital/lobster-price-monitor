@@ -1,0 +1,11 @@
+[Unit]
+Description=Lobster Price Monitor host watchdog timer
+Requires=lobster-price-monitor-watchdog.service
+
+[Timer]
+OnCalendar=*-*-* 10:00:00
+OnCalendar=*-*-* 22:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

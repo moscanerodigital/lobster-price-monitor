@@ -216,6 +216,26 @@ bash scripts/deploy_host.sh --dry-run --status
 
 Reports scheduler mode (none/dry-run/ops), unit loaded/active state, git revision, scrape freshness (>24h warns), `health_check.py` summary, serve URLs, and secrets preflight. Exit codes: 0 healthy, 1 degraded, 2 fatal preflight.
 
+### Host watchdog (Gate D Wave 9)
+
+Status-driven Telegram alerts when the host is degraded or fatal:
+
+```bash
+# Check only (no Telegram)
+make watchdog-host
+
+# Preview alert without sending
+bash scripts/watchdog_host.sh --notify --dry-run
+
+# Send alert if unhealthy (requires Telegram secrets)
+bash scripts/watchdog_host.sh --notify
+
+# Via deploy orchestrator
+bash scripts/deploy_host.sh --watchdog
+```
+
+Ops promotion (`make promote-ops`) installs a watchdog timer (2×/day) with `LOBSTER_WATCHDOG_ALERTS=1`. Alerts are deduped for 6 hours per reason set. Dry-run Phase 2 hosts can opt in with `bash scripts/install_scheduler.sh --with-watchdog`.
+
 **Teardown with purge:** `make teardown-host TEARDOWN_FLAGS=--purge-files` or `bash scripts/deploy_host.sh --teardown --purge-files`.
 
 ---
@@ -254,6 +274,7 @@ Reports scheduler mode (none/dry-run/ops), unit loaded/active state, git revisio
 | `make teardown-host` | Full teardown: demote ops if loaded → uninstall all schedulers |
 | `make upgrade-host` | In-place upgrade: pull, refresh deps, reload schedulers |
 | `make status-host` | Read-only host diagnostics (scheduler, health, scrape age) |
+| `make watchdog-host` | Host watchdog check (add `--notify` for Telegram alert) |
 | `make uninstall-scheduler` | Unload scrape/serve/health schedulers only |
 | `scripts/preflight_secrets.sh` | Check secrets paths without printing values |
 | `make regen-bplus-fixtures` | Regenerate CI Gate B+ fixture data (maintainer-only) |

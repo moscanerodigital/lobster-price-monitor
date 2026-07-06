@@ -1,0 +1,16 @@
+[Unit]
+Description=Lobster Price Monitor host watchdog (status + Telegram alert)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=erik
+WorkingDirectory=LOBSTER_ROOT
+Environment=LOBSTER_WATCHDOG_ALERTS=1
+ExecStart=LOBSTER_ROOT/scripts/watchdog_host.sh --notify
+StandardOutput=append:LOBSTER_ROOT/logs/watchdog.stdout.log
+StandardError=append:LOBSTER_ROOT/logs/watchdog.stderr.log
+
+[Install]
+WantedBy=multi-user.target
