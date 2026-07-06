@@ -10,11 +10,12 @@ SKIP_HEALTH=false
 PROMOTE=false
 TEARDOWN=false
 UPGRADE=false
+STATUS=false
 PURGE_FILES=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--upgrade] [--purge-files] [--lobster-root PATH]
+Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--upgrade] [--status] [--purge-files] [--lobster-root PATH]
 
 Unified host deployment orchestrator:
   Phase 1: bootstrap_host.sh (install + dry-run + verify + health)
@@ -25,7 +26,8 @@ Phase 3 never runs on --phase all unless --promote is set.
 
 With --teardown, run teardown_host.sh instead (remove all schedulers).
 With --upgrade, run upgrade_host.sh instead (in-place code/deps refresh).
---teardown and --upgrade are mutually exclusive with phase flags.
+With --status, run status_host.sh instead (read-only host diagnostics).
+--teardown, --upgrade, and --status are mutually exclusive with phase flags.
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -55,6 +57,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --upgrade)
       UPGRADE=true
+      shift
+      ;;
+    --status)
+      STATUS=true
       shift
       ;;
     --purge-files)
@@ -128,9 +134,20 @@ upgrade() {
   bash "${LOBSTER_ROOT}/scripts/upgrade_host.sh" "${flags[@]}"
 }
 
+status() {
+  echo "--- Host status ---"
+  local flags=(--lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/status_host.sh" "${flags[@]}"
+}
+
 main() {
-  if [[ "$TEARDOWN" == true && "$UPGRADE" == true ]]; then
-    echo "ERROR: --teardown and --upgrade are mutually exclusive" >&2
+  local exclusive_count=0
+  [[ "$TEARDOWN" == true ]] && exclusive_count=$((exclusive_count + 1))
+  [[ "$UPGRADE" == true ]] && exclusive_count=$((exclusive_count + 1))
+  [[ "$STATUS" == true ]] && exclusive_count=$((exclusive_count + 1))
+  if [[ $exclusive_count -gt 1 ]]; then
+    echo "ERROR: --teardown, --upgrade, and --status are mutually exclusive" >&2
     exit 1
   fi
 
@@ -144,6 +161,13 @@ main() {
   if [[ "$UPGRADE" == true ]]; then
     echo "=== Gate D host upgrade ==="
     upgrade
+    echo "=== deploy_host.sh finished ==="
+    return 0
+  fi
+
+  if [[ "$STATUS" == true ]]; then
+    echo "=== Gate D host status ==="
+    status
     echo "=== deploy_host.sh finished ==="
     return 0
   fi

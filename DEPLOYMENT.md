@@ -85,6 +85,28 @@ bash scripts/deploy_host.sh --upgrade        # same via orchestrator
 
 Does not demote ops, promote dry-run, or delete `data/`.
 
+## Host status (Gate D Wave 8)
+
+Read-only operational diagnostics:
+
+```bash
+bash scripts/status_host.sh              # human-readable report
+bash scripts/status_host.sh --json       # machine-readable JSON
+make status-host
+bash scripts/deploy_host.sh --status     # same via orchestrator
+```
+
+| Section | Content |
+|---------|---------|
+| Scheduler | Mode (none / dry-run / ops) and unit loaded/active state |
+| Code | Git short revision (when `.git` exists) |
+| Scrape | Latest `run-log.jsonl` timestamp; warns if >24h stale |
+| Health | `health_check.py` report (live/blocked markets, readiness) |
+| Serve | Localhost and LAN board URLs |
+| Secrets | Non-fatal `preflight_secrets.sh` summary |
+
+Exit codes: `0` healthy · `1` degraded · `2` fatal preflight (missing venv, bad `LOBSTER_ROOT`).
+
 ## Dry-run scrape (no Telegram)
 
 ```bash
