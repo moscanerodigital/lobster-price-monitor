@@ -14,6 +14,7 @@ SCRIPT = ROOT / "scripts" / "watchdog_host.sh"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from watchdog_alert import (  # noqa: E402
+    alert_host_escalation,
     alert_host_watchdog,
     build_watchdog_reasons,
     reason_hash,
@@ -32,7 +33,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_watchdog_host_dry_run_exits_zero() -> None:
     proc = _run("--dry-run")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
-    assert "Gate D Wave 9 host watchdog" in proc.stdout
+    assert "Gate D Wave 12 host watchdog" in proc.stdout
 
 
 def test_watchdog_host_dry_run_notify_would_alert() -> None:
@@ -237,18 +238,97 @@ def test_watchdog_alert_cli_recovery_attempted_dry_run() -> None:
     assert "auto-recovery attempted" in proc.stdout
 
 
+def test_watchdog_host_dry_run_deep_recover() -> None:
+    proc = _run("--dry-run", "--recover", "--deep-recover")
+    assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
+    assert "deep recovery" in proc.stdout.lower()
+
+
+def test_alert_host_escalation_dry_run() -> None:
+    status = {
+        "status": "degraded",
+        "lobster_root": "/opt/lobster",
+        "git_revision": "abc",
+        "scheduler_mode": "ops",
+        "scrape": {"stale": True, "age_hours": 25.0},
+        "health": {"status": "ready"},
+        "units": {
+            "scrape_loaded": True,
+            "scrape_active": True,
+            "serve_loaded": True,
+            "serve_active": True,
+        },
+        "secrets_ok": True,
+    }
+    reasons = build_watchdog_reasons(status)
+    with patch("watchdog_alert.send_telegram", return_value=True):
+        assert alert_host_escalation(
+            status=status,
+            exit_code=1,
+            reasons=reasons,
+            consecutive_failures=3,
+            recovery_attempted=True,
+            deep_recovery_attempted=True,
+            dry_run=True,
+        )
+
+
+def test_watchdog_alert_cli_escalation_dry_run() -> None:
+    status = {
+        "status": "degraded",
+        "lobster_root": "/opt/lobster",
+        "git_revision": "abc",
+        "scheduler_mode": "ops",
+        "scrape": {"stale": True, "age_hours": 25.0},
+        "health": {"status": "ready"},
+        "units": {
+            "scrape_loaded": True,
+            "scrape_active": True,
+            "serve_loaded": True,
+            "serve_active": True,
+        },
+        "secrets_ok": True,
+    }
+    proc = subprocess.run(
+        [
+            str(ROOT / ".venv/bin/python"),
+            str(ROOT / "scripts" / "watchdog_alert.py"),
+            "--status-json",
+            json.dumps(status),
+            "--exit-code",
+            "1",
+            "--escalation",
+            "--consecutive-failures",
+            "3",
+            "--recovery-attempted",
+            "--deep-recovery-attempted",
+            "--dry-run",
+            "--force",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "HOST ESCALATION" in proc.stdout
+    assert "consecutive failures: 3" in proc.stdout
+
+
 def main() -> int:
     tests = [
         test_watchdog_host_dry_run_exits_zero,
         test_watchdog_host_dry_run_notify_would_alert,
         test_watchdog_host_help,
         test_watchdog_host_dry_run_recover,
+        test_watchdog_host_dry_run_deep_recover,
         test_build_watchdog_reasons_stale_scrape,
         test_alert_host_watchdog_dedupes_without_force,
         test_alert_host_watchdog_force_bypasses_dedupe,
         test_alert_host_watchdog_recovery_attempted_note,
         test_watchdog_alert_cli_dry_run,
         test_watchdog_alert_cli_recovery_attempted_dry_run,
+        test_alert_host_escalation_dry_run,
+        test_watchdog_alert_cli_escalation_dry_run,
     ]
     failed = 0
     for test in tests:

@@ -450,6 +450,17 @@ print_human_report() {
     log "Watchdog timer loaded: ${WATCHDOG_LOADED}"
     log "Watchdog auto-recovery: ${WATCHDOG_RECOVER_ENABLED}"
   fi
+  if [[ "$DRY_RUN" != true ]]; then
+    local streak_line
+    streak_line="$("${LOBSTER_ROOT}/.venv/bin/python" -c "
+import sys
+sys.path.insert(0, '${LOBSTER_ROOT}/scripts')
+from host_health_state import watchdog_health_summary
+summary = watchdog_health_summary()
+print(f\"Watchdog failure streak: {summary['consecutive_failures']} (escalate at {summary['escalation_threshold']})\")
+" 2>/dev/null || echo "Watchdog failure streak: n/a")"
+    log "$streak_line"
+  fi
   log ""
   log "--- Code ---"
   log "Git revision: ${GIT_REVISION}"
@@ -502,7 +513,7 @@ print_json_report() {
 
   if [[ "$DRY_RUN" == true ]]; then
     cat <<EOF
-{"lobster_root":"${LOBSTER_ROOT}","dry_run":true,"scheduler_mode":"${SCHEDULER_MODE}","git_revision":"${GIT_REVISION}","scrape":{"timestamp":"${SCRAPE_TS}","age_hours":0,"stale":false},"health":{"status":"dry-run"},"units":{"watchdog_loaded":false,"watchdog_recover_enabled":false},"serve":{"local":"http://127.0.0.1:${SERVE_PORT}/board.html","lan":"http://${lan}:${SERVE_PORT}/board.html"},"secrets_ok":true,"status":"dry-run"}
+{"lobster_root":"${LOBSTER_ROOT}","dry_run":true,"scheduler_mode":"${SCHEDULER_MODE}","git_revision":"${GIT_REVISION}","scrape":{"timestamp":"${SCRAPE_TS}","age_hours":0,"stale":false},"health":{"status":"dry-run"},"units":{"watchdog_loaded":false,"watchdog_recover_enabled":false},"watchdog_health":{"consecutive_failures":0,"escalation_threshold":3,"should_escalate":false,"last_outcome":null},"serve":{"local":"http://127.0.0.1:${SERVE_PORT}/board.html","lan":"http://${lan}:${SERVE_PORT}/board.html"},"secrets_ok":true,"status":"dry-run"}
 EOF
     return 0
   fi
@@ -528,6 +539,10 @@ EOF
   "${LOBSTER_ROOT}/.venv/bin/python" - <<'PY'
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.environ.get("LOBSTER_ROOT", ""), "scripts"))
+from host_health_state import watchdog_health_summary
 
 health = json.loads(os.environ.get("HEALTH_JSON", "{}"))
 
@@ -575,6 +590,7 @@ report = {
     },
     "secrets_ok": os.environ.get("SECRETS_OK", "true") == "true",
     "status": "degraded" if degraded else "healthy",
+    "watchdog_health": watchdog_health_summary(),
 }
 print(json.dumps(report, ensure_ascii=False))
 PY

@@ -89,7 +89,7 @@ def test_deploy_host_dry_run_watchdog() -> None:
     proc = _run("--dry-run", "--watchdog")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Host watchdog" in proc.stdout
-    assert "watchdog_host.sh" in proc.stdout or "Gate D Wave 9 host watchdog" in proc.stdout
+    assert "watchdog_host.sh" in proc.stdout or "Gate D Wave 12 host watchdog" in proc.stdout
     assert "Phase 1: bootstrap" not in proc.stdout
 
 
@@ -97,7 +97,7 @@ def test_deploy_host_dry_run_recover() -> None:
     proc = _run("--dry-run", "--recover")
     assert proc.returncode == 0, f"{proc.stdout}\n{proc.stderr}"
     assert "Host recovery" in proc.stdout
-    assert "recover_host.sh" in proc.stdout or "Gate D Wave 10 host recovery" in proc.stdout
+    assert "recover_host.sh" in proc.stdout or "Gate D Wave 12 host recovery" in proc.stdout
     assert "Phase 1: bootstrap" not in proc.stdout
 
 

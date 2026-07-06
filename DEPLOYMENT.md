@@ -127,13 +127,32 @@ bash scripts/deploy_host.sh --watchdog     # same via orchestrator
 
 Watchdog reuses `status_host.sh --json` checks. Deduped alerts log to `alerts_sent.jsonl` with `kind=host_watchdog`.
 
-**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local) with `LOBSTER_WATCHDOG_RECOVER=1` (recover before alert). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
+**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local) with `LOBSTER_WATCHDOG_RECOVER=1` and `LOBSTER_WATCHDOG_DEEP_RECOVER=1` (recover before alert, deep recovery on failure). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
 
 ## Closed-loop ops recovery (Gate D Wave 11)
 
 Ops watchdog runs auto-recovery before alerting. `make verify-ops` on a host checks `LOBSTER_WATCHDOG_RECOVER=1` in the watchdog unit. `status_host.sh --json` reports `units.watchdog_recover_enabled`.
 
 To disable auto-recovery on a host, set `LOBSTER_WATCHDOG_RECOVER=0` in the watchdog plist/systemd unit and reload. Existing ops hosts pick up the default on `make upgrade-host`.
+
+## Recovery escalation (Gate D Wave 12)
+
+Tracks consecutive watchdog failures in `data/host-health.jsonl` and escalates after repeated degraded outcomes:
+
+```bash
+bash scripts/recover_host.sh --deep              # tier-2 upgrade_host after tier-1
+bash scripts/watchdog_host.sh --recover --deep-recover --notify
+make status-host                                 # reports watchdog_health failure streak
+```
+
+| Setting | Effect |
+|---------|--------|
+| `LOBSTER_WATCHDOG_DEEP_RECOVER=1` | Run `upgrade_host.sh` when tier-1 recovery leaves host degraded (default on ops watchdog) |
+| `LOBSTER_WATCHDOG_ESCALATE_AFTER=3` | Send escalation Telegram after N consecutive failures in 48h |
+
+Escalation alerts (`kind=host_escalation`) include failure streak, recovery notes, and manual steps (`make upgrade-host`, `make recover-host`, `make demote-ops`). Normal watchdog alerts still fire below the threshold.
+
+`make verify-ops` on a host also checks `LOBSTER_WATCHDOG_DEEP_RECOVER=1` in the watchdog unit.
 
 ## Host recovery (Gate D Wave 10)
 
@@ -152,6 +171,7 @@ bash scripts/deploy_host.sh --recover     # same via orchestrator
 | `--dry-run` | Preview actions; always exit 0 |
 | `--notify` | Send deduped Telegram summary (requires secrets) |
 | `--force` | Bypass 6h recovery-alert dedupe window |
+| `--deep` | Enable tier-2 `upgrade_host` when tier-1 leaves host degraded |
 
 Recovery actions (based on `status_host.sh --json`):
 
@@ -162,6 +182,7 @@ Recovery actions (based on `status_host.sh --json`):
 | Scrape scheduler not loaded | Reload scrape scheduler |
 | Health not ready | Trigger scrape + re-run health check |
 | Ops host missing watchdog | Install watchdog timer |
+| Tier-1 insufficient (with `--deep`) | Run `upgrade_host.sh` (refresh deps + reload schedulers) |
 
 Does not auto-fix fatal preflight errors or missing secrets.
 
