@@ -6,6 +6,7 @@ import html
 import json
 
 from board_render import _SECTION_META, _format_observed
+from market_logos import logo_data_uri
 
 
 def _group_items_by_market(items: list[dict]) -> list[tuple[str, list[dict]]]:
@@ -41,10 +42,20 @@ def _item_label_without_market(item: dict, *, section_key: str) -> str:
 
 def _html_market_sign(market_short: str, *, section_key: str, tilt: float) -> str:
     name = html.escape(market_short)
+    logo_uri = logo_data_uri(market_short)
+    if logo_uri:
+        board_inner = (
+            f'<span class="market-sign-board has-logo">'
+            f'<img class="market-sign-logo" src="{logo_uri}" alt="{name}" '
+            f'width="42" height="42" decoding="async">'
+            f"</span>"
+        )
+    else:
+        board_inner = f'<span class="market-sign-board">{name}</span>'
     return (
         f'<div class="market-sign section-{section_key}" style="--sign-tilt: {tilt:.1f}deg">'
         f'<span class="market-sign-frame">'
-        f'<span class="market-sign-board">{name}</span>'
+        f"{board_inner}"
         f"</span>"
         f"</div>"
     )
@@ -357,6 +368,22 @@ def render_chalk_html(board: dict) -> str:
       text-shadow: 0 1px 2px rgba(0,0,0,.35);
       box-shadow: inset 0 2px 6px rgba(0,0,0,.28);
     }}
+    .market-sign-board.has-logo {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 0.35rem 0.55rem;
+    }}
+    .market-sign-logo {{
+      width: clamp(2rem, 5vw, 2.65rem);
+      height: clamp(2rem, 5vw, 2.65rem);
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,.3);
+      box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    }}
     .section-lobster .market-sign-board {{ color: var(--lobster); }}
     .section-oyster .market-sign-board {{ color: var(--ocean); }}
     .section-special .market-sign-board {{ color: var(--gold); }}
@@ -632,6 +659,13 @@ def render_chalk_html(board: dict) -> str:
         max-width: 100%;
         padding: 0.28rem 0.85rem;
         font-size: 1.05rem;
+      }}
+      .market-sign-board.has-logo {{
+        padding: 0.3rem 0.45rem;
+      }}
+      .market-sign-logo {{
+        width: 2rem;
+        height: 2rem;
       }}
     }}
   </style>
