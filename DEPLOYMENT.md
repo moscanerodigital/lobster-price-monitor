@@ -313,9 +313,28 @@ Runtime data lives in `data/` (git-ignored): `prices.jsonl`, `quarantine.jsonl`,
 | Facebook cookies | `~/.openclaw/secrets/facebook-cookies.json` | Unlock FB-only markets |
 | Google CSE | env / `google_cse.py` config | Search fallback before DDG |
 
-Without FB cookies, six markets remain blocked (DDG captcha-prone). The board still serves real prices from web catalogs and marks blocked markets in **SOURCE COVERAGE**.
+### Facebook cookies unlock path (D-01)
+
+Six markets are FB-only (Ancient Mariner, Two Tides, Scarborough, Free Range, SoPo, Five Islands). Without cookies they stay blocked; DDG/CSE fallbacks are captcha-prone.
+
+**How it works:**
+
+1. `scripts/secrets.py` loads `~/.openclaw/secrets/facebook-cookies.json` when present (dict `c_user`/`xs`, nested `cookies`, or browser-export list format).
+2. `scripts/scrape_markets.py` passes those cookies to `fb_curl_fetch.fetch_fb_posts()` first, then `facebook-scraper` as fallback.
+3. `scripts/fb_curl_fetch.py` uses the same `load_fb_cookies()` path — no separate cookie file.
+
+**Setup:** See [setup_fb_cookies.md](setup_fb_cookies.md). Verify with:
+
+```bash
+.venv/bin/python -c "from secrets import load_fb_cookies; print('cookies OK' if load_fb_cookies() else 'missing')"
+bash scripts/preflight_secrets.sh
+```
+
+**Without cookies:** Pine Tree and Harbor Fish (web catalogs) still serve live prices; blocked markets appear in SOURCE COVERAGE with reasons.
 
 ## Scheduling
+
+**Install path requirement (macOS launchd):** Clone and run the repo **outside** `~/Documents` — e.g. `~/lobster-price-monitor` or `/opt/lobster-price-monitor`. macOS TCC blocks launchd from executing scripts under `~/Documents` (exit 78 / `Operation not permitted`). Set `LOBSTER_ROOT` to this path before `make install-scheduler`.
 
 Set `LOBSTER_ROOT` to your install path (e.g. `/opt/lobster-price-monitor` on Linux or `/Users/you/lobster-price-monitor` on macOS). Canonical unit templates use the `LOBSTER_ROOT` placeholder on **both** macOS and Linux — substitute at install time (see `scripts/install_scheduler.sh`).
 
@@ -388,7 +407,30 @@ Partial boards are valid for serving when blocked markets are labeled in SOURCE 
 
 For markets without online structured price lists (like Five Islands Lobster Co.), you can manually import price observations using `scripts/manual_import.py`. This appends a validated row to `prices.jsonl` with `source="manual"` and automatically regenerates `board.html`.
 
-Run it from the root directory:
+### Five Islands (one command)
+
+```bash
+make import-five-islands
+```
+
+Imports soft shell **$14.99/lb** and hard shell **$15.99/lb** for Five Islands Lobster Co. (baseline wharf prices; verify against reality before serving).
+
+### Serving host workflow
+
+`prices.jsonl` is gitignored — manual imports exist only in local `data/`. After `git pull` on the serving host, re-run imports if Five Islands rows are missing:
+
+```bash
+cd "$LOBSTER_ROOT"
+make import-five-islands
+make verify-deploy          # confirms board.html matches data, no demo markers
+make status-host
+```
+
+If the host runs its own scrape scheduler, a scrape will **not** remove manual rows (they persist in `prices.jsonl`), but you must re-import after a fresh clone or `data/` wipe.
+
+### Individual imports
+
+Run from the repo root:
 
 ```bash
 # Import a soft shell price of $14.99/lb for Five Islands

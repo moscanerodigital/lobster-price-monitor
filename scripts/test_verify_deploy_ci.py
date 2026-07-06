@@ -59,6 +59,37 @@ def test_verify_deploy_gate_passes_with_bplus_fixtures() -> None:
     assert "GATE DEPLOY VERIFICATION PASSED" in proc.stdout
 
 
+def test_deploy_gate_fails_on_stale_board_html() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        data_dir = Path(td)
+        refresh_bplus_fixtures(dst=data_dir)
+        backup = _seed_project_data(data_dir)
+        try:
+            proc_board = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "board.py"), "--html"],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+            )
+            assert proc_board.returncode == 0, proc_board.stderr
+
+            board_path = ROOT / "data" / "board.html"
+            board_path.write_text(
+                board_path.read_text(encoding="utf-8") + "<!-- stale -->",
+                encoding="utf-8",
+            )
+
+            import verify_deploy_gate
+
+            try:
+                verify_deploy_gate.check_board_matches_data()
+                raise AssertionError("expected GateFailure for stale board.html")
+            except GateFailure as e:
+                assert "stale" in str(e).lower()
+        finally:
+            _restore_project_data(backup)
+
+
 @patch("verify_deploy_gate.subprocess.run")
 @patch("verify_deploy_gate.sys.platform", "darwin")
 def test_deploy_gate_passes_dry_run_scheduler(mock_run: MagicMock) -> None:
@@ -123,6 +154,7 @@ def test_deploy_gate_passes_linux_dry_run_timer(mock_run: MagicMock) -> None:
 def main() -> int:
     tests = [
         test_verify_deploy_gate_passes_with_bplus_fixtures,
+        test_deploy_gate_fails_on_stale_board_html,
         test_deploy_gate_passes_dry_run_scheduler,
         test_deploy_gate_fails_when_ops_loaded,
         test_deploy_gate_passes_linux_dry_run_timer,

@@ -9,7 +9,7 @@ See also: [DEPLOYMENT.md](DEPLOYMENT.md) (reference), [RALPH.md](RALPH.md) (proj
 ## Prerequisites
 
 - Python 3.11+ on target host (3.14 tested locally)
-- Repo cloned to install path (set `LOBSTER_ROOT`, e.g. `/opt/lobster-price-monitor` or `~/lobster-price-monitor`)
+- Repo cloned **outside `~/Documents`** — e.g. `LOBSTER_ROOT=~/lobster-price-monitor` or `/opt/lobster-price-monitor` (required for macOS launchd; see [DEPLOYMENT.md § Scheduling](DEPLOYMENT.md#scheduling))
 - Network access to configured web catalogs
 
 ### Secrets (`~/.openclaw/secrets/`)
@@ -180,7 +180,7 @@ make uninstall-scheduler                   # uninstall only (skip demote)
 | Health check | `.venv/bin/python scripts/health_check.py` |
 | Health log (daily) | `.venv/bin/python scripts/health_check.py --log` |
 | Manual scrape (no alerts) | `make scrape` |
-| Five Islands workaround | `scripts/manual_import.py` |
+| Five Islands workaround | `make import-five-islands` |
 | FB cookies setup | [setup_fb_cookies.md](setup_fb_cookies.md) |
 | Update RALPH learnings | `.venv/bin/python scripts/update_ralph_learnings.py` |
 
@@ -358,7 +358,7 @@ Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --
 - **Unauthenticated FB** returns 0 posts — use cookies or rely on web-catalog sources (Pine Tree, Harbor Fish)
 - **Use MoscaGemBot** token at `~/.openclaw/secrets/telegram/herb.token`, NOT CronBot
 - **DDG fallback** is captcha-prone without cookies — Google CSE preferred when configured
-- **Dev laptop (`~/Documents/...`) is not the serving host** — launchd scrape fails there with exit 78 (TCC / `Operation not permitted`). Scrape manually on dev, commit `data/board.html`, push; serving host pulls and serves. See [DEPLOYMENT.md § Dev machine vs serving host](DEPLOYMENT.md#dev-machine-vs-serving-host).
+- **Dev laptop (`~/Documents/...`) is not the serving host** — launchd scrape fails there with exit 78 (TCC / `Operation not permitted`). Scrape manually on dev, commit `data/board.html`, push; serving host pulls and serves. **Production install must be outside `~/Documents`** (`~/lobster-price-monitor` or `/opt/...`). Verify: `launchctl print gui/$(id -u)/com.erik.lobster-price-monitor.scrape` shows `last exit code = 0` after a scheduled run. See [DEPLOYMENT.md § Dev machine vs serving host](DEPLOYMENT.md#dev-machine-vs-serving-host).
 
 ---
 
@@ -377,6 +377,7 @@ Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --
 | `make reprovision-host` | Tier-5 full reprovision: teardown + pull + rebuild + scheduler redeploy |
 | `make status-host` | Read-only host diagnostics (scheduler, health, scrape age) |
 | `make recover-host` | Host auto-recovery for degraded states |
+| `make import-five-islands` | Manual Five Islands lobster prices ($14.99 soft / $15.99 hard) |
 | `make watchdog-host` | Host watchdog check (add `--notify` for Telegram alert) |
 | `make uninstall-scheduler` | Unload scrape/serve/health schedulers only |
 | `scripts/preflight_secrets.sh` | Check secrets paths without printing values |

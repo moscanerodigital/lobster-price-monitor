@@ -19,7 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from state import DATA_DIR
+from board_render import get_board, render_html
+from state import DATA_DIR, latest_run_log
 from verify_production_gate import (
     DRY_RUN_SCRAPE_LABEL,
     DRY_RUN_SCRAPE_TIMER,
@@ -52,6 +53,38 @@ def check_board_html() -> None:
     if board.stat().st_size == 0:
         _fail("board.html exists but is empty")
     print("  ✓ data/board.html exists")
+
+
+def check_board_no_demo() -> None:
+    """Production board must not be demo mode or carry demo HTML markers."""
+    live = get_board(demo=False)
+    if live.get("is_demo"):
+        _fail("production board is in demo mode — run scrape first")
+    board_path = DATA_DIR / "board.html"
+    if board_path.exists():
+        text = board_path.read_text(encoding="utf-8").lower()
+        if 'class="demo-banner"' in text or "demo board" in text:
+            _fail("board.html contains demo markers")
+    print("  ✓ board has no demo markers")
+
+
+def check_board_matches_data() -> None:
+    """On-disk board.html must match a fresh render from current prices.jsonl."""
+    board_path = DATA_DIR / "board.html"
+    if not board_path.exists():
+        return
+    expected = render_html(get_board(demo=False))
+    actual = board_path.read_text(encoding="utf-8")
+    if actual != expected:
+        _fail(
+            "board.html is stale vs current data — re-run scrape or: "
+            ".venv/bin/python scripts/board.py --html"
+        )
+    run = latest_run_log()
+    if run and run.get("ts"):
+        print("  ✓ board.html matches current data (run-log present)")
+    else:
+        print("  ✓ board.html matches current data")
 
 
 def check_health() -> None:
@@ -164,6 +197,8 @@ def main() -> int:
 
     steps: list[tuple[str, object]] = [
         ("board_html", check_board_html),
+        ("board_no_demo", check_board_no_demo),
+        ("board_matches_data", check_board_matches_data),
         ("health", check_health),
     ]
     if not args.skip_verify_suite:
