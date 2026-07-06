@@ -155,6 +155,16 @@ make demote-ops                        # unload ops → load dry-run → verify-
 
 `promote_ops.sh` swaps dry-run scheduler for ops scheduler (`LOBSTER_ALERTS=1`), runs one confirmation scrape with alerts, then runs `make verify-ops`.
 
+**Full host teardown (remove all schedulers):**
+
+```bash
+bash scripts/teardown_host.sh --dry-run    # preview demote + uninstall
+make teardown-host                         # demote ops if loaded → uninstall all units
+make uninstall-scheduler                   # uninstall only (skip demote)
+```
+
+`teardown_host.sh` demotes ops to dry-run when needed, then unloads scrape (dry-run + ops), serve, and health schedulers. Pass `--purge-files` to remove installed plists/units from disk. Does not delete `.venv`, `data/`, or the repo.
+
 ---
 
 ## Phase 4 — Ongoing ops
@@ -203,6 +213,8 @@ make demote-ops                        # unload ops → load dry-run → verify-
 | `make bootstrap-host` | Phase 1 install + dry-run + verify + health |
 | `make install-scheduler` | Install dry-run scrape + serve + health schedulers (Phase 2) |
 | `make demote-ops` | Roll back ops scheduler to dry-run (no live alerts) |
+| `make teardown-host` | Full teardown: demote ops if loaded → uninstall all schedulers |
+| `make uninstall-scheduler` | Unload scrape/serve/health schedulers only |
 | `scripts/preflight_secrets.sh` | Check secrets paths without printing values |
 | `make regen-bplus-fixtures` | Regenerate CI Gate B+ fixture data (maintainer-only) |
 | `scripts/send_test_alert.py` | Send live Telegram test alerts — **not a unit test** |

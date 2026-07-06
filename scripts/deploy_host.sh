@@ -8,10 +8,11 @@ DRY_RUN=false
 PHASE="all"
 SKIP_HEALTH=false
 PROMOTE=false
+TEARDOWN=false
 
 usage() {
   cat <<'EOF'
-Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--lobster-root PATH]
+Usage: scripts/deploy_host.sh [--dry-run] [--phase 1|2|3|all] [--skip-health] [--promote] [--teardown] [--lobster-root PATH]
 
 Unified host deployment orchestrator:
   Phase 1: bootstrap_host.sh (install + dry-run + verify + health)
@@ -19,6 +20,8 @@ Unified host deployment orchestrator:
   Phase 3: promote_ops.sh (live Telegram — requires --promote or --phase 3)
 
 Phase 3 never runs on --phase all unless --promote is set.
+
+With --teardown, run teardown_host.sh instead (remove all schedulers).
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -40,6 +43,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --promote)
       PROMOTE=true
+      shift
+      ;;
+    --teardown)
+      TEARDOWN=true
       shift
       ;;
     --lobster-root)
@@ -92,7 +99,22 @@ phase3() {
   bash "${LOBSTER_ROOT}/scripts/promote_ops.sh" $(dry_flag)
 }
 
+teardown() {
+  echo "--- Host teardown ---"
+  local flags=(--lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  [[ "$SKIP_HEALTH" == true ]] && flags+=(--skip-health)
+  bash "${LOBSTER_ROOT}/scripts/teardown_host.sh" "${flags[@]}"
+}
+
 main() {
+  if [[ "$TEARDOWN" == true ]]; then
+    echo "=== Gate D host teardown ==="
+    teardown
+    echo "=== deploy_host.sh finished ==="
+    return 0
+  fi
+
   echo "=== Gate D host deploy (phase=${PHASE}) ==="
 
   case "$PHASE" in
