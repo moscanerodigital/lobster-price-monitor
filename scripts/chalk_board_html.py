@@ -4,9 +4,23 @@ from __future__ import annotations
 
 import html
 import json
+import re
 
 from board_render import _SECTION_META, _format_observed
 from market_logos import logo_data_uri
+
+_PRICE_IN_LABEL = re.compile(r"\$\d+(?:\.\d{2})?")
+
+
+def _lobster_grouped_label(item: dict) -> str:
+    """Shell/tier text for logo-grouped rows — prices live in the price column only."""
+    detail = str(item.get("row_secondary") or "").strip()
+    if not detail:
+        return str(item.get("label") or "Lobster")
+    cleaned = _PRICE_IN_LABEL.sub("", detail)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s*·\s*", " · ", cleaned).strip(" ·")
+    return cleaned or detail
 
 
 def _group_items_by_market(items: list[dict]) -> list[tuple[str, list[dict]]]:
@@ -47,7 +61,7 @@ def _item_label_without_market(item: dict, *, section_key: str) -> str:
             return row_primary[len(market_short) + len(sep) :]
         return str(item.get("label") or row_primary)
     if section_key == "lobster" and item.get("is_consolidated"):
-        return str(item.get("row_secondary") or item.get("label") or "Lobster")
+        return _lobster_grouped_label(item)
     if section_key == "oyster":
         return _oyster_row_label(item)
     return str(item.get("label") or "")
@@ -197,7 +211,8 @@ def render_chalk_html(board: dict) -> str:
 
     trends_html = ""
     trends = board.get("trends", {})
-    if trends and trends.get("labels"):
+    trend_labels = trends.get("labels") or []
+    if trends and len(trend_labels) >= 2:
         trends_html = (
             '<section class="board-section section-trends">'
             '<h2 class="section-heading">📈 Price Trends</h2>'
@@ -407,20 +422,23 @@ def render_chalk_html(board: dict) -> str:
       flex-direction: column;
     }}
     .price-row {{
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      display: flex;
       align-items: baseline;
-      gap: var(--space-xs) var(--space-md);
+      justify-content: space-between;
+      gap: 0.35rem 0.5rem;
       padding: var(--row-pad-y) 0;
       border-bottom: 1px solid rgba(242,234,216,.08);
       line-height: 1.3;
+      min-width: 0;
     }}
     .price-row:last-child {{ border-bottom: none; }}
     .row-left {{
       display: flex;
       flex-direction: column;
       gap: 0.05rem;
+      flex: 0 1 auto;
       min-width: 0;
+      max-width: 72%;
     }}
     .row-primary {{
       font-size: var(--text-row);
@@ -445,6 +463,7 @@ def render_chalk_html(board: dict) -> str:
       vertical-align: baseline;
     }}
     .row-price {{
+      flex: 0 0 auto;
       text-align: right;
       white-space: nowrap;
       min-width: var(--price-col-min);
@@ -553,8 +572,11 @@ def render_chalk_html(board: dict) -> str:
       .board {{ padding: var(--space-lg) 0.85rem; }}
       h1 {{ font-size: 1.5rem; }}
       .price-row {{
-        grid-template-columns: 1fr;
+        flex-wrap: wrap;
         gap: 0.15rem;
+      }}
+      .row-left {{
+        max-width: 100%;
       }}
       .row-price {{
         text-align: left;
@@ -562,21 +584,16 @@ def render_chalk_html(board: dict) -> str:
         white-space: normal;
       }}
       .price-row.is-consolidated {{
-        grid-template-columns: minmax(0, 1fr) auto;
+        flex-wrap: nowrap;
         align-items: center;
+      }}
+      .price-row.is-consolidated .row-left {{
+        max-width: 58%;
       }}
       .price-row.is-consolidated .row-price {{
         text-align: right;
         min-width: var(--price-col-min);
         white-space: nowrap;
-      }}
-    }}
-
-    /* --- Breakpoint: tablet (≥481px) --- */
-    @media (min-width: 481px) {{
-      .price-row {{
-        grid-template-columns: minmax(0, 1fr) auto;
-        align-items: baseline;
       }}
     }}
 
@@ -613,17 +630,15 @@ def render_chalk_html(board: dict) -> str:
         margin-top: var(--space-md);
       }}
       .section-special .market-groups {{
-        columns: 3;
-        column-gap: var(--space-lg);
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-md) var(--space-lg);
         align-items: start;
       }}
       .section-special .market-group {{
-        break-inside: avoid;
-        -webkit-column-break-inside: avoid;
-        page-break-inside: avoid;
-        display: inline-block;
-        width: 100%;
-        margin-bottom: var(--space-sm);
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
       }}
       .section-special .market-group--wide .price-list {{
         display: grid;
@@ -681,8 +696,8 @@ def render_chalk_html(board: dict) -> str:
       }}
       .section-lobster .market-groups {{
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0.3rem 0.5rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem 0.65rem;
         align-items: start;
       }}
       .section-oyster .market-groups {{
@@ -691,17 +706,15 @@ def render_chalk_html(board: dict) -> str:
         gap: 0.3rem;
       }}
       .section-special .market-groups {{
-        columns: 3;
-        column-gap: 0.65rem;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.35rem 0.65rem;
         align-items: start;
       }}
       .section-special .market-group {{
-        break-inside: avoid;
-        -webkit-column-break-inside: avoid;
-        page-break-inside: avoid;
-        display: inline-block;
-        width: 100%;
-        margin-bottom: 0.25rem;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
       }}
       .market-sign {{
         margin: 0.05rem 0 0.1rem;
@@ -852,4 +865,6 @@ def render_chalk_html(board: dict) -> str:
 </body>
 </html>"""
 
-    return html_content.replace("</body>\n</html>", script_content)
+    if trends and len(trend_labels) >= 2:
+        return html_content.replace("</body>\n</html>", script_content)
+    return html_content

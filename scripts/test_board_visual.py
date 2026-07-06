@@ -74,6 +74,38 @@ def test_board_has_three_sections() -> None:
         assert f"section-{section}" in html
 
 
+def test_lobster_grouped_label_strips_duplicate_prices() -> None:
+    from chalk_board_html import _lobster_grouped_label
+
+    item = {"row_secondary": "soft $10.49 · hard $10.99", "label": "Lobster"}
+    assert _lobster_grouped_label(item) == "soft · hard"
+    item2 = {"row_secondary": "1⅛ lb · hard $7.99", "label": "Lobster"}
+    assert _lobster_grouped_label(item2) == "1⅛ lb · hard"
+
+
+def test_no_duplicate_dollar_in_grouped_lobster_rows() -> None:
+    html = _board_html()
+    rows = re.findall(
+        r'<li class="price-row section-lobster is-consolidated">(.*?)</li>',
+        html,
+        re.DOTALL | re.IGNORECASE,
+    )
+    assert rows, "expected consolidated lobster rows"
+    for row in rows:
+        primary = re.search(r'<span class="row-primary">([^<]*)</span>', row)
+        assert primary, "missing row-primary"
+        assert "$" not in primary.group(1), f"duplicate price in label: {primary.group(1)!r}"
+
+
+def test_no_broken_trends_with_single_point() -> None:
+    html = _board_html()
+    if 'id="trendsChart"' in html:
+        labels = re.findall(r'"labels":\s*\[([^\]]*)\]', html)
+        for block in labels:
+            count = len([p for p in block.split(",") if p.strip()])
+            assert count >= 2, f"trends chart should have 2+ points, got {count}"
+
+
 def test_no_chowder_lb_unit_mismatch() -> None:
     html = _board_html()
     assert "Chowder $9.99/pint" not in html
@@ -108,6 +140,9 @@ def main() -> int:
         test_market_groups_no_nested_scroll,
         test_desktop_logo_size_at_least_80px,
         test_board_has_three_sections,
+        test_lobster_grouped_label_strips_duplicate_prices,
+        test_no_duplicate_dollar_in_grouped_lobster_rows,
+        test_no_broken_trends_with_single_point,
         test_no_chowder_lb_unit_mismatch,
         test_live_section_minimums,
     ]
