@@ -341,13 +341,17 @@ def test_lobster_board_hides_size_premium_tiers() -> None:
             "post_id": "web-harbor",
             "kind": "lobster_tier",
             "key": "chicks_soft_shell",
-            "price": 14.3,
+            "price": 13.0,
             "unit": "lb",
-            "snippet": "chix soft",
+            "snippet": "chix soft ($14.30 per lobster; ~$13.00/lb)",
             "confidence": 70,
             "gate_passed": True,
             "source": "web",
-            "display_price": 14.3,
+            "raw_price": 14.3,
+            "normalized_price": 13.0,
+            "normalization_weight_lb": 1.1,
+            "price_display_type": "normalized",
+            "display_price": 13.0,
             "display_unit": "lb",
         },
         {
@@ -356,13 +360,17 @@ def test_lobster_board_hides_size_premium_tiers() -> None:
             "post_id": "web-harbor",
             "kind": "lobster_tier",
             "key": "chicks_hard_shell",
-            "price": 15.3,
+            "price": 13.91,
             "unit": "lb",
-            "snippet": "chix hard",
+            "snippet": "chix hard ($15.30 per lobster; ~$13.91/lb)",
             "confidence": 70,
             "gate_passed": True,
             "source": "web",
-            "display_price": 15.3,
+            "raw_price": 15.3,
+            "normalized_price": 13.91,
+            "normalization_weight_lb": 1.1,
+            "price_display_type": "normalized",
+            "display_price": 13.91,
             "display_unit": "lb",
         },
         {
@@ -371,13 +379,17 @@ def test_lobster_board_hides_size_premium_tiers() -> None:
             "post_id": "web-harbor",
             "kind": "lobster_tier",
             "key": "1.25lb_soft_shell",
-            "price": 20.25,
+            "price": 15.0,
             "unit": "lb",
             "snippet": "size upsell",
             "confidence": 70,
             "gate_passed": True,
             "source": "web",
-            "display_price": 20.25,
+            "raw_price": 20.25,
+            "normalized_price": 15.0,
+            "normalization_weight_lb": 1.35,
+            "price_display_type": "normalized",
+            "display_price": 15.0,
             "display_unit": "lb",
         },
         {
@@ -439,10 +451,10 @@ def test_lobster_board_hides_size_premium_tiers() -> None:
         assert "$" in detail
         assert "soft $" in detail or "hard $" in detail
     harbor = next(i for i in lobster if "Harbor" in i["market_short"])
-    assert harbor["sort_price"] == 14.3
+    assert harbor["sort_price"] == 13.0
     harbor_detail = harbor.get("subtext") or harbor.get("row_secondary", "")
-    assert "soft $14.30" in harbor_detail
-    assert "hard $15.30" in harbor_detail
+    assert "soft $13.00" in harbor_detail
+    assert "hard $13.91" in harbor_detail
     pine = next(i for i in lobster if i["market_short"] == "Pine Tree")
     assert pine["sort_price"] == 13.5
 

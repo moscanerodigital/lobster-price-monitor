@@ -245,6 +245,10 @@ def _is_stale_lobster_key(key: str, market: str, lobster_keys: set[str]) -> bool
     legacy = {"hard_shell", "soft_shell", "chicks", "1lb", "1.25lb", "1.5lb", "1.75lb", "2lb_plus"}
     if key not in legacy:
         return False
+    if key == "hard_shell" and any(k.endswith("_hard_shell") for k in lobster_keys):
+        return True
+    if key == "soft_shell" and any(k.endswith("_soft_shell") for k in lobster_keys):
+        return True
     for suffix in ("_hard_shell", "_soft_shell"):
         if f"{key}{suffix}" in lobster_keys:
             return True

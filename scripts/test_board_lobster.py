@@ -91,6 +91,52 @@ def test_live_board_no_forced_hard_without_evidence() -> None:
                 )
 
 
+def test_collapse_drops_stale_bare_shell_when_qualified_tiers_exist() -> None:
+    from board_lobster import _is_stale_lobster_key
+
+    keys = {"hard_shell", "1.125lb_hard_shell", "1.5lb_soft_shell"}
+    assert _is_stale_lobster_key("hard_shell", "Ancient Mariner Lobster Co.", keys) is True
+    assert _is_stale_lobster_key("1.125lb_hard_shell", "Ancient Mariner Lobster Co.", keys) is False
+
+
+def test_collapse_ancient_mariner_prefers_entry_tier_over_stub() -> None:
+    items = [
+        {
+            "market": "Ancient Mariner Lobster Co.",
+            "market_short": "Ancient Mariner",
+            "key": "hard_shell",
+            "price": 15.99,
+            "sort_price": 15.99,
+            "snippet": "hard shell live lobster $15.99/lb",
+            "observed_at": "2026-07-05T12:00:00+00:00",
+            "source": "facebook",
+        },
+        {
+            "market": "Ancient Mariner Lobster Co.",
+            "market_short": "Ancient Mariner",
+            "key": "1.125lb_hard_shell",
+            "price": 10.99,
+            "sort_price": 10.99,
+            "snippet": "1-1 1/8 lbs: $10.99/lb",
+            "observed_at": "2026-07-06T12:00:00+00:00",
+            "source": "facebook",
+        },
+        {
+            "market": "Ancient Mariner Lobster Co.",
+            "market_short": "Ancient Mariner",
+            "key": "1.5lb_soft_shell",
+            "price": 10.49,
+            "sort_price": 10.49,
+            "snippet": "softshell all sizes $10.49/lb",
+            "observed_at": "2026-07-06T12:00:00+00:00",
+            "source": "facebook",
+        },
+    ]
+    headlines = _collapse_lobster_headlines(items)
+    assert len(headlines) == 1
+    assert headlines[0]["row_secondary"] == "soft $10.49 · hard $10.99"
+
+
 def main() -> int:
     tests = [
         test_shell_from_key_bare_size_without_snippet_returns_none,
@@ -98,6 +144,8 @@ def main() -> int:
         test_valid_headline_tier_rejects_cull_without_tier_signal,
         test_valid_headline_tier_allows_cull_when_tier_signal_present,
         test_collapse_skips_unproven_shell_rows,
+        test_collapse_drops_stale_bare_shell_when_qualified_tiers_exist,
+        test_collapse_ancient_mariner_prefers_entry_tier_over_stub,
         test_live_board_ancient_mariner_shows_soft_and_hard,
         test_live_board_no_forced_hard_without_evidence,
     ]

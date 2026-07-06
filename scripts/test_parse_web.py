@@ -58,7 +58,7 @@ HARBOR_FISH_LOBSTER_RANGE_FIXTURE = """
 HARBOR_FISH_LOBSTER_VARIATION_FIXTURE = """
 <h2 class="entry-title de_title_module product_title">Live Maine Hard Shell Lobster</h2>
 <span class="price"><span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">&#036;</span>15.30</span> <span>&ndash;</span> <span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">&#036;</span>29.10</span></span>
-<form data-product_variations="[{&quot;attributes&quot;:{&quot;attribute_pa_size&quot;:&quot;chix&quot;},&quot;display_price&quot;:15.3},{&quot;attributes&quot;:{&quot;attribute_pa_size&quot;:&quot;1-14-lb&quot;},&quot;display_price&quot;:21.25},{&quot;attributes&quot;:{&quot;attribute_pa_size&quot;:&quot;1-12-lb&quot;},&quot;display_price&quot;:29.1}]">
+<form data-product_variations="[{&quot;attributes&quot;:{&quot;attribute_pa_size&quot;:&quot;chix&quot;},&quot;display_price&quot;:15.3,&quot;weight&quot;:&quot;1.1&quot;},{&quot;attributes&quot;:{&quot;attribute_pa_size&quot;:&quot;1-14-lb&quot;},&quot;display_price&quot;:21.25,&quot;weight&quot;:&quot;1.35&quot;},{&quot;attributes&quot;:{&quot;attribute_pa_size&quot;:&quot;1-12-lb&quot;},&quot;display_price&quot;:29.1,&quot;weight&quot;:&quot;1.65&quot;}]">
 """
 
 SAMPLES = [
@@ -164,10 +164,14 @@ def test_harbor_fish_variation_rows() -> None:
     rows = parse_web_catalog_rows(HARBOR_FISH_LOBSTER_VARIATION_FIXTURE)
     assert len(rows) == 3
     prices = sorted(r.price for r in rows)
-    assert prices == [15.3, 21.25, 29.1]
+    assert prices == [13.91, 15.74, 17.64]
     keys = {r.key for r in rows}
     assert keys == {"chicks_hard_shell", "1.25lb_hard_shell", "1.5lb_hard_shell"}
-    assert all(r.price_display_type == "size_specific" for r in rows)
+    assert all(r.price_display_type == "normalized" for r in rows)
+    chix = next(r for r in rows if r.key == "chicks_hard_shell")
+    assert chix.raw_price == 15.3
+    assert chix.normalization_weight_lb == 1.1
+    assert chix.normalized_price == 13.91
 
 
 def test_pine_tree_raw_price_metadata() -> None:

@@ -258,6 +258,37 @@ def _is_test_row(row: dict) -> bool:
     return False
 
 
+def _harbor_legacy_normalization(row: dict) -> tuple[float | None, float | None, float | None]:
+    """Backfill $/lb for Harbor catalog totals stored before parse_web/1.6."""
+    if row.get("kind") != "lobster_tier" or "Harbor Fish" not in row.get("market", ""):
+        return None, None, None
+    if row.get("normalized_price") is not None:
+        return None, None, None
+    from parse_web import _HARBOR_SIZE_MAP, _HARBOR_SIZE_WEIGHT_LB
+
+    tier_weights = {
+        tier: _HARBOR_SIZE_WEIGHT_LB[size_slug]
+        for size_slug, tier in _HARBOR_SIZE_MAP.items()
+        if size_slug in _HARBOR_SIZE_WEIGHT_LB
+    }
+    key = row.get("key", "")
+    base = key
+    for suffix in ("_soft_shell", "_hard_shell"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    weight = tier_weights.get(base)
+    if not weight:
+        return None, None, None
+    raw = row.get("raw_price")
+    if raw is None:
+        raw = row.get("price")
+    if raw is None:
+        return None, None, None
+    raw_f = float(raw)
+    return raw_f, float(weight), round(raw_f / float(weight), 2)
+
+
 def _display_values_from_row(row: dict) -> tuple[float, str, float | None, bool]:
     """Customer-facing price, unit, optional high, and range flag."""
     display_type = row.get("price_display_type", "")
@@ -269,6 +300,12 @@ def _display_values_from_row(row: dict) -> tuple[float, str, float | None, bool]
         norm = row.get("normalized_price")
         weight = row.get("normalization_weight") or row.get("normalization_weight_lb")
         raw = row.get("raw_price")
+        if norm is None and (raw is None or weight is None):
+            backfill_raw, backfill_weight, backfill_norm = _harbor_legacy_normalization(row)
+            if backfill_norm is not None:
+                raw = backfill_raw
+                weight = backfill_weight
+                norm = backfill_norm
         if norm is None and weight and raw is not None and float(weight) > 0:
             norm = round(float(raw) / float(weight), 2)
         unit = str(row.get("unit", "lb"))

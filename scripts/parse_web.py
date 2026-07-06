@@ -26,7 +26,7 @@ _VARIATIONS_RE = re.compile(
     re.DOTALL,
 )
 
-PARSER_VERSION = "parse_web/1.5"
+PARSER_VERSION = "parse_web/1.6"
 
 ParsedWebRow = Tuple[
     Literal["lobster_tier", "oyster_tier", "special"],
@@ -46,6 +46,13 @@ _HARBOR_SIZE_LABELS = {
     "chix": "1 lb (chix)",
     "1-14-lb": "1¼ lb",
     "1-12-lb": "1½ lb",
+}
+
+# Harbor WooCommerce variation prices are per lobster; weights from live catalog.
+_HARBOR_SIZE_WEIGHT_LB = {
+    "chix": 1.1,
+    "1-14-lb": 1.35,
+    "1-12-lb": 1.65,
 }
 
 
@@ -274,6 +281,38 @@ def _variation_tier_key(size_tier: str, shell: str | None) -> str:
     return size_tier
 
 
+def _harbor_variation_row(
+    title: str,
+    *,
+    tier_key: str,
+    size_label: str,
+    catalog_total: float,
+    weight_lb: float,
+    shell: str | None,
+) -> WebCatalogRow:
+    """Harbor Fish sells whole lobsters — normalize catalog total to $/lb."""
+    normalized = round(catalog_total / weight_lb, 2)
+    snippet = (
+        f"{title} — {size_label} "
+        f"(${catalog_total:.2f} per lobster; ~${normalized:.2f}/lb)"
+    )
+    return WebCatalogRow(
+        kind="lobster_tier",
+        key=tier_key,
+        price=normalized,
+        unit="lb",
+        snippet=snippet,
+        raw_price=catalog_total,
+        normalized_price=normalized,
+        price_display_type="normalized",
+        normalization_weight_lb=weight_lb,
+        catalog_title=title,
+        display_price=normalized,
+        display_unit="lb",
+        shell_tier=shell,
+    )
+
+
 def _rows_from_variations(title: str, variations: list[dict]) -> List[WebCatalogRow]:
     """Harbor Fish style size-specific lobster prices from WooCommerce variations."""
     title_l = title.lower()
@@ -289,23 +328,25 @@ def _rows_from_variations(title: str, variations: list[dict]) -> List[WebCatalog
         price = var.get("display_price") or var.get("display_regular_price")
         if price is None:
             continue
-        price_f = float(price)
+        catalog_total = float(price)
+        weight_raw = var.get("weight")
+        weight_lb = (
+            float(weight_raw)
+            if weight_raw not in (None, "", 0, "0")
+            else _HARBOR_SIZE_WEIGHT_LB.get(size_slug, 1.0)
+        )
+        if weight_lb <= 0:
+            continue
         size_label = _HARBOR_SIZE_LABELS.get(size_slug, size_slug.replace("-", " "))
         tier_key = _variation_tier_key(tier, shell)
-        snippet = f"{title} — {size_label} @ ${price_f:.2f}/lb"
         rows.append(
-            WebCatalogRow(
-                kind="lobster_tier",
-                key=tier_key,
-                price=price_f,
-                unit="lb",
-                snippet=snippet,
-                raw_price=price_f,
-                display_price=price_f,
-                display_unit="lb",
-                price_display_type="size_specific",
-                catalog_title=title,
-                shell_tier=shell,
+            _harbor_variation_row(
+                title,
+                tier_key=tier_key,
+                size_label=size_label,
+                catalog_total=catalog_total,
+                weight_lb=weight_lb,
+                shell=shell,
             )
         )
     return rows
