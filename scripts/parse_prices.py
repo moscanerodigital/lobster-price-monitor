@@ -230,6 +230,14 @@ def _canonical_special_key(clause: str, kw: str | None) -> str:
     return _slug(clause)[:40] or "special"
 
 
+def _section_header_colon_end(text: str, pos: int) -> int:
+    """Clause starts after Hard/Softshell section headers like 'Hardshell:'."""
+    header_end = -1
+    for m in re.finditer(r"(?:hard|soft)\s*shell\s*:", text[:pos], re.IGNORECASE):
+        header_end = m.end()
+    return header_end
+
+
 def _clause_of(text: str, pos: int) -> str:
     """Return the clause containing pos, delimited by comma, semicolon, '. ', ' and ', or double newlines."""
     and_start = -1
@@ -246,6 +254,7 @@ def _clause_of(text: str, pos: int) -> str:
     newline = text.rfind("\n", 0, pos)
     bullet = text.rfind("•", 0, pos)
     emdash = max(text.rfind("—", 0, pos), text.rfind("–", 0, pos))
+    section_header = _section_header_colon_end(text, pos)
 
     double_nl_start = -1
     for m in re.finditer(r"\n[\s\u2063]*\n", text[:pos]):
@@ -256,10 +265,19 @@ def _clause_of(text: str, pos: int) -> str:
         list_line_start = m.end()
 
     start = max(
-        comma, semi, dot, double_nl_start, and_start, newline, bullet, emdash, list_line_start
+        comma,
+        semi,
+        dot,
+        double_nl_start,
+        and_start,
+        newline,
+        bullet,
+        emdash,
+        list_line_start,
+        section_header,
     )
     if start >= 0:
-        if start in {and_start, double_nl_start, list_line_start}:
+        if start in {and_start, double_nl_start, list_line_start, section_header}:
             return text[start:pos]
         if start == bullet:
             return text[start + 1 : pos]
@@ -342,21 +360,32 @@ def _infer_lobster_tier(text: str, price_pos: int) -> str | None:
     return "hard_shell"
 
 
+def _tier_clause_boundaries(segment: str) -> list[int]:
+    boundaries: list[int] = []
+    for i, ch in enumerate(segment):
+        if ch in (",", ";", "\n", "•", "—", "–"):
+            boundaries.append(i)
+    for i in range(len(segment) - 2, -1, -1):
+        if segment[i] == "." and segment[i + 1] == " ":
+            if i > 0 and segment[i - 1].isdigit():
+                continue
+            boundaries.append(i)
+    for m in re.finditer(r"\n[\s\u2063]*\n", segment):
+        boundaries.append(m.start())
+    for m in re.finditer(r"\n\s*[-–—]\s*", segment):
+        boundaries.append(m.end() - 1)
+    for m in re.finditer(r"(?:hard|soft)\s*shell\s*:", segment, re.IGNORECASE):
+        boundaries.append(m.end())
+    boundaries.sort()
+    return boundaries
+
+
 def _find_tier_left_of(text: str, price_pos: int) -> str | None:
     size_tiers = {"1.125lb", "1.25lb", "1.5lb", "1.75lb", "2lb_plus"}
     window_start = max(0, price_pos - 160)
     left = text[window_start:price_pos]
 
-    boundaries: list[int] = []
-    for i, ch in enumerate(left):
-        if ch in (",", ";", "\n"):
-            boundaries.append(i)
-    for i in range(len(left) - 2, -1, -1):
-        if left[i] == "." and left[i + 1] == " ":
-            if i > 0 and left[i - 1].isdigit():
-                continue
-            boundaries.append(i)
-    boundaries.sort()
+    boundaries = _tier_clause_boundaries(left)
 
     if not boundaries:
         clauses = [(0, len(left))]
@@ -377,12 +406,20 @@ def _find_tier_left_of(text: str, price_pos: int) -> str | None:
         seg = left[cs:ce]
         for pattern, canonical in _TIER_KEYWORDS:
             for m in re.finditer(pattern, seg, re.IGNORECASE):
+                if canonical in ("hard_shell", "soft_shell"):
+                    tail = seg[m.end() :].lstrip()
+                    if tail.startswith(":"):
+                        continue
                 cands.append((m.start() + cs, canonical))
         return cands
 
     same = _tiers_in_clause(current_clause)
     if same:
+        size = [c for c in same if c[1] in size_tiers]
         non_size = [c for c in same if c[1] not in size_tiers]
+        if size and non_size and any(c[1] in ("hard_shell", "soft_shell") for c in non_size):
+            size.sort(key=lambda c: -c[0])
+            return size[0][1]
         if non_size:
             non_size.sort(key=lambda c: -c[0])
             return non_size[0][1]
@@ -508,12 +545,17 @@ def _clause_contains(text: str, price_pos: int, kw: str) -> bool:
 
 def parse_post(text: str) -> list[ParsedRow]:
     """Extract lobster tiers + oyster tiers + specials from FB post text."""
+    return [row for row, _pos in _parse_post_rows(text)]
+
+
+def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
+    """Like parse_post but retains each row's $-sign position for quality gating."""
     if not text:
         return []
     import unicodedata
 
     text = unicodedata.normalize("NFKD", text).replace("\u2044", "/")
-    rows: list[ParsedRow] = []
+    rows: list[tuple[ParsedRow, int]] = []
 
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
@@ -561,7 +603,7 @@ def parse_post(text: str) -> list[ParsedRow]:
             if _clause_contains(text, m.start(), "oyster"):
                 continue
             snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
-            rows.append(("lobster_tier", tier, price, "lb", snippet))
+            rows.append((("lobster_tier", tier, price, "lb", snippet), m.start()))
 
     text_lower = text.lower()
     has_oyster_mention = "oyster" in text_lower or "oysters" in text_lower
@@ -574,7 +616,7 @@ def parse_post(text: str) -> list[ParsedRow]:
         if not grade:
             grade = "oyster"
         snippet = text[max(0, m.start() - 50) : m.end() + 20].strip()[:120]
-        rows.append(("oyster_tier", grade, price, "doz", snippet))
+        rows.append((("oyster_tier", grade, price, "doz", snippet), m.start()))
 
     for m in _PRICE_EA_RE.finditer(text):
         if not _clause_has_oyster(text, m.start()):
@@ -584,7 +626,7 @@ def parse_post(text: str) -> list[ParsedRow]:
         grade = _find_oyster_grade_in_clause(clause)
         key = grade or "oyster"
         snippet = text[max(0, m.start() - 50) : m.end() + 30].strip()[:120]
-        rows.append(("oyster_tier", key, price, "ea", snippet))
+        rows.append((("oyster_tier", key, price, "ea", snippet), m.start()))
 
     if has_oyster_mention:
         for m in _PRICE_PER_OYSTER_RE.finditer(text):
@@ -593,9 +635,9 @@ def parse_post(text: str) -> list[ParsedRow]:
             grade = _find_oyster_grade_in_clause(clause)
             key = grade or "oyster"
             snippet = text[max(0, m.start() - 50) : m.end() + 20].strip()[:120]
-            rows.append(("oyster_tier", key, price, "ea", snippet))
+            rows.append((("oyster_tier", key, price, "ea", snippet), m.start()))
 
-    tier_snippets = {r[4] for r in rows if r[0] == "lobster_tier"}
+    tier_snippets = {r[0][4] for r in rows if r[0][0] == "lobster_tier"}
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
         snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
@@ -613,7 +655,7 @@ def parse_post(text: str) -> list[ParsedRow]:
             ):
                 continue
             key = _canonical_special_key(clause, kw)
-            rows.append(("special", key, price, "lb", snippet))
+            rows.append((("special", key, price, "lb", snippet), m.start()))
 
     for m in _PRICE_EA_RE.finditer(text):
         if _clause_has_oyster(text, m.start()):
@@ -626,7 +668,7 @@ def parse_post(text: str) -> list[ParsedRow]:
             clause = _clause_of(text, m.start())
             snippet = text[max(0, m.start() - 40) : m.end() + 30].strip()[:120]
             key = _canonical_special_key(clause, kw)
-            rows.append(("special", key, price, "ea", snippet))
+            rows.append((("special", key, price, "ea", snippet), m.start()))
 
     # Bare $ prices with contextual unit inference
     covered_positions = set()
@@ -652,7 +694,7 @@ def parse_post(text: str) -> list[ParsedRow]:
             if "cooked" in immediate:
                 continue
             snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
-            rows.append(("lobster_tier", tier, price, "lb", snippet))
+            rows.append((("lobster_tier", tier, price, "lb", snippet), m.start()))
             continue
         kw = _find_special_kw_in_clause(text, m.start())
         if not kw:
@@ -666,26 +708,27 @@ def parse_post(text: str) -> list[ParsedRow]:
             unit = _infer_unit_from_clause(clause)
             snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
             key = _canonical_special_key(clause, kw)
-            rows.append(("special", key, price, unit, snippet))
+            rows.append((("special", key, price, unit, snippet), m.start()))
 
     seen: set[tuple[str, str, float, str]] = set()
-    deduped: list[ParsedRow] = []
-    for r in rows:
-        sig = (r[0], r[1], r[2], r[3])
+    deduped: list[tuple[ParsedRow, int]] = []
+    for row, pos in rows:
+        sig = (row[0], row[1], row[2], row[3])
         if sig not in seen:
             seen.add(sig)
-            deduped.append(r)
+            deduped.append((row, pos))
     return deduped
 
 
 def parse_post_with_meta(text: str) -> tuple[list[ParsedRow], list[ParseMeta]]:
     """Like parse_post but returns per-row metadata for quality gating."""
-    rows = parse_post(text)
+    parsed = _parse_post_rows(text)
+    rows = [row for row, _pos in parsed]
     meta: list[ParseMeta] = []
-    for row in rows:
+    for row, price_pos in parsed:
         kind, key, price, unit, snippet = row
         bare = "$" in snippet and not _has_explicit_unit_in_snippet(snippet, unit)
-        meta.append({"price_pos": text.find(snippet[:20]) if snippet else 0, "bare_price": bare})
+        meta.append({"price_pos": price_pos, "bare_price": bare})
     return rows, meta
 
 

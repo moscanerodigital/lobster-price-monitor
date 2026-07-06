@@ -164,6 +164,50 @@ IS_SPECIALS_POST_SAMPLES = [
 ]
 
 
+ANCIENT_MARINER_MENU = (
+    "Hardshell:\n\n"
+    "1-1 1/8 lbs: $10.99/lb\n"
+    "1 1/4 lbs: $11.99/lb\n"
+    "1 1/2 lbs: $12.99/lb\n"
+    "2+ lbs: $15.99/lb\n\n"
+    "Softshell:\n\n"
+    "All sizes (1lb - 1 1/2 lbs): $10.49/lb\n"
+    "2+ lbs: $13.99/lb\n\n"
+    "Culls (One Claw or No Claws):\n\n"
+    "$8.99/lb"
+)
+
+
+def test_ancient_mariner_multiline_menu_tiers() -> None:
+    """Regression: newline-delimited size tiers keep shell context per section."""
+    rows = parse_post(ANCIENT_MARINER_MENU)
+    actual = [(k, key, p, u) for k, key, p, u, _ in rows]
+    assert actual == [
+        ("lobster_tier", "1.125lb_hard_shell", 10.99, "lb"),
+        ("lobster_tier", "1.25lb_hard_shell", 11.99, "lb"),
+        ("lobster_tier", "1.5lb_hard_shell", 12.99, "lb"),
+        ("lobster_tier", "2lb_plus_hard_shell", 15.99, "lb"),
+        ("lobster_tier", "1.5lb_soft_shell", 10.49, "lb"),
+        ("lobster_tier", "2lb_plus_soft_shell", 13.99, "lb"),
+    ]
+    keys = {key for _k, key, _p, _u in actual}
+    assert "hard_shell" not in keys
+    assert "soft_shell" not in keys
+
+
+def test_section_header_does_not_bind_aggregate_tier() -> None:
+    """Hardshell: + size on one line must not collapse to bare hard_shell."""
+    rows = parse_post("Hardshell: 2+ lbs $15.99/lb")
+    lobster = [(key, price) for kind, key, price, _u, _ in rows if kind == "lobster_tier"]
+    assert lobster == [("2lb_plus_hard_shell", 15.99)]
+
+
+def test_bullet_items_parse_as_separate_clauses() -> None:
+    rows = parse_post("• Halibut $18.99/lb • Haddock $9.99/lb")
+    specials = {(key, price) for kind, key, price, _u, _ in rows if kind == "special"}
+    assert specials == {("halibut", 18.99), ("haddock", 9.99)}
+
+
 def main() -> int:
     failures = 0
     for i, (text, expected) in enumerate(SAMPLES, 1):

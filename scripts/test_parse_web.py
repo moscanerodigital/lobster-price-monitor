@@ -115,6 +115,42 @@ def test_harbor_fish_unique_special_keys() -> None:
     }
 
 
+def test_pine_tree_smoked_fish_distinct_keys() -> None:
+    from quality_gate import score_row
+
+    fixture = """
+<ul class="products">
+<li class="product">
+<h2 class="woocommerce-loop-product__title">Smoked Atlantic Salmon</h2>
+<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">$</span>12.99</bdi></span>
+</li>
+<li class="product">
+<h2 class="woocommerce-loop-product__title">Smoked Rainbow Trout</h2>
+<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">$</span>10.99</bdi></span>
+</li>
+<li class="product">
+<h2 class="woocommerce-loop-product__title">Oak Smoked Arctic Char</h2>
+<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">$</span>10.99</bdi></span>
+</li>
+</ul>
+"""
+    rows = parse_web_catalog_rows(fixture)
+    keys = {r.key for r in rows if r.kind == "special"}
+    assert keys == {
+        "smoked_atlantic_salmon",
+        "smoked_rainbow_trout",
+        "oak_smoked_arctic_char",
+    }
+    for row in rows:
+        gated = score_row(
+            row.as_tuple(),
+            source="web",
+            observed_at="2026-07-05T12:00:00+00:00",
+            structured=True,
+        )
+        assert gated.confidence >= 70, (row.key, gated.confidence, gated.reject_reason)
+
+
 def test_harbor_range_metadata() -> None:
     rows = parse_web_catalog_rows(HARBOR_FISH_LOBSTER_RANGE_FIXTURE)
     assert len(rows) == 1
@@ -149,6 +185,8 @@ def test_pine_tree_raw_price_metadata() -> None:
 def main() -> int:
     failures = 0
     for t in (
+        test_harbor_fish_unique_special_keys,
+        test_pine_tree_smoked_fish_distinct_keys,
         test_harbor_range_metadata,
         test_harbor_fish_variation_rows,
         test_pine_tree_raw_price_metadata,

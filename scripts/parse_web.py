@@ -208,6 +208,7 @@ def _canonical_web_special_key(title: str) -> str:
         if phrase in t:
             return key
     slug = re.sub(r"^fresh\s+", "", t)
+    slug = re.sub(r"\s+per\s+lb$", "", slug)
     slug = re.sub(r"[^a-z0-9]+", "_", slug).strip("_")[:80]
     if slug:
         return slug

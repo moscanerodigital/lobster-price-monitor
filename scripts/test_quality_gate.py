@@ -137,6 +137,70 @@ def test_oyster_each_and_shucked_pkg_bands():
     print("  ✓ oyster each + shucked pkg bands")
 
 
+TWO_TIDES_MENU = (
+    "Two Tides Seafood current menu prices:\n\n"
+    "LIVE LOBSTER\n"
+    "1 1/8 lb: $7.99/lb\n"
+    "1 1/4 lb: $9.99/lb\n\n"
+    "FRESH FISH\n"
+    "• Gulf of Maine Haddock Fillet: $11.99/lb\n"
+    "• Fresh Halibut: $18.99/lb\n"
+    "• Atlantic Salmon: $14.99/lb\n"
+    "• Swordfish Steaks: $21.99/lb\n"
+    "• Maine Crab Meat: $39.99/lb\n"
+    "• Snow Crab Salad: $35.99/lb\n"
+    "• Scallops: $24.99/lb\n"
+    "• Lob/crab Salad: $39.00/lb\n"
+)
+
+
+def test_fb_menu_borderline_confidence_passes_with_boost() -> None:
+    """Menu-post boost lifts 45–68 raw scores to Gate B floor (70)."""
+    from quality_gate import _compute_raw_confidence
+
+    row = ("special", "haddock", 11.99, "lb", "Gulf of Maine Haddock Fillet: $11.99/lb")
+    text = "Today's catch menu:\n• Gulf of Maine Haddock Fillet: $11.99/lb"
+    pos = text.find("$11.99")
+    raw = _compute_raw_confidence(
+        row,
+        source="facebook",
+        full_text=text,
+        price_pos=pos,
+        bare_price=False,
+        structured=False,
+    )
+    assert 45 <= raw <= 100
+    assert raw >= 70
+
+    gated = score_row(
+        row,
+        source="facebook",
+        observed_at=FRESH_TS,
+        full_text=text,
+        price_pos=pos,
+        bare_price=False,
+    )
+    assert gated.gate_passed, gated.reject_reason
+
+
+def test_two_tides_menu_specials_pass_gate() -> None:
+    from parse_prices import parse_post_with_meta
+
+    rows, meta = parse_post_with_meta(TWO_TIDES_MENU)
+    specials = [(r, m) for r, m in zip(rows, meta) if r[0] == "special"]
+    assert len(specials) >= 8
+    passed, quarantined = gate_rows(
+        [r for r, _ in specials],
+        source="facebook",
+        observed_at=FRESH_TS,
+        full_text=TWO_TIDES_MENU,
+        parse_meta=[m for _, m in specials],
+    )
+    assert len(passed) >= 8, [
+        (q.key, q.raw_confidence, q.reject_reason) for q in quarantined
+    ]
+
+
 def main() -> int:
     tests = [
         test_source_quality,
@@ -149,6 +213,8 @@ def main() -> int:
         test_fb_menu_specials_confidence_boost,
         test_is_specials_post,
         test_oyster_each_and_shucked_pkg_bands,
+        test_fb_menu_borderline_confidence_passes_with_boost,
+        test_two_tides_menu_specials_pass_gate,
     ]
     failures = 0
     for t in tests:

@@ -101,6 +101,8 @@ CANONICAL_SPECIAL_KEYS = {
 }
 
 FB_MENU_SPECIALS_CONFIDENCE_BOOST = 15
+# Menu posts with canonical species keys but no keyword window hit still need ≥70.
+FB_MENU_CANONICAL_KEY_BOOST = 10
 
 
 @dataclass
@@ -267,6 +269,8 @@ def _compute_raw_confidence(
         and is_specials_post(full_text)
     ):
         confidence += FB_MENU_SPECIALS_CONFIDENCE_BOOST
+        if special_has_canonical_key(key) and kw is None:
+            confidence += FB_MENU_CANONICAL_KEY_BOOST
 
     if bare_price:
         confidence -= 30
