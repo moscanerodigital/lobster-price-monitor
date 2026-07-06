@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate D Wave 9/12/13 host watchdog — status-driven Telegram on degraded/fatal.
+# Gate D Wave 9/12/13/14 host watchdog — status-driven Telegram on degraded/fatal.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,15 +10,17 @@ FORCE=false
 RECOVER=false
 DEEP_RECOVER=false
 REDEPLOY_RECOVER=false
+REBUILD_RECOVER=false
 RECOVERY_ATTEMPTED=false
 DEEP_RECOVERY_ATTEMPTED=false
 REDEPLOY_RECOVERY_ATTEMPTED=false
+REBUILD_RECOVERY_ATTEMPTED=false
 INITIAL_STATUS_CODE=0
 CONSECUTIVE_FAILURES=0
 
 usage() {
   cat <<'EOF'
-Usage: scripts/watchdog_host.sh [--dry-run] [--notify] [--recover] [--deep-recover] [--redeploy-recover] [--force] [--lobster-root PATH]
+Usage: scripts/watchdog_host.sh [--dry-run] [--notify] [--recover] [--deep-recover] [--redeploy-recover] [--rebuild-recover] [--force] [--lobster-root PATH]
 
 Run status_host.sh checks and optionally send deduped Telegram alerts when
 the host is degraded (exit 1) or fatal (exit 2).
@@ -31,6 +33,9 @@ LOBSTER_WATCHDOG_DEEP_RECOVER=1 on ops watchdog units).
 
 With --redeploy-recover, pass tier-3 redeploy recovery to recover_host.sh (also
 enabled by LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1 on ops watchdog units).
+
+With --rebuild-recover, pass tier-4 rebuild recovery to recover_host.sh (also
+enabled by LOBSTER_WATCHDOG_REBUILD_RECOVER=1 on ops watchdog units).
 
 Default: check-only (no Telegram). Use --notify or set LOBSTER_WATCHDOG_ALERTS=1
 to send alerts (requires Telegram secrets).
@@ -67,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       REDEPLOY_RECOVER=true
       shift
       ;;
+    --rebuild-recover)
+      REBUILD_RECOVER=true
+      shift
+      ;;
     --lobster-root)
       LOBSTER_ROOT="$2"
       shift 2
@@ -97,6 +106,10 @@ fi
 
 if [[ "${LOBSTER_WATCHDOG_REDEPLOY_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REDEPLOY_RECOVER:-}" == "true" ]]; then
   REDEPLOY_RECOVER=true
+fi
+
+if [[ "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "true" ]]; then
+  REBUILD_RECOVER=true
 fi
 
 log() {
@@ -132,6 +145,7 @@ record_health_outcome() {
   [[ "$RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--recovery-attempted)
   [[ "$DEEP_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--deep-recovery-attempted)
   [[ "$REDEPLOY_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--redeploy-recovery-attempted)
+  [[ "$REBUILD_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--rebuild-recovery-attempted)
   [[ "$recovered" == true ]] && record_flags+=(--recovered)
 
   if [[ "$DRY_RUN" == true ]]; then
@@ -189,6 +203,7 @@ maybe_notify() {
   [[ "$RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--recovery-attempted)
   [[ "$DEEP_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--deep-recovery-attempted)
   [[ "$REDEPLOY_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--redeploy-recovery-attempted)
+  [[ "$REBUILD_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--rebuild-recovery-attempted)
 
   if [[ "$use_escalation" == true ]]; then
     alert_flags+=(--escalation --consecutive-failures "$CONSECUTIVE_FAILURES")
@@ -223,6 +238,7 @@ maybe_recover() {
   [[ "$FORCE" == true ]] && recover_flags+=(--force)
   [[ "$DEEP_RECOVER" == true ]] && recover_flags+=(--deep-recover)
   [[ "$REDEPLOY_RECOVER" == true ]] && recover_flags+=(--redeploy-recover)
+  [[ "$REBUILD_RECOVER" == true ]] && recover_flags+=(--rebuild-recover)
 
   local recover_out
   set +e
@@ -235,10 +251,13 @@ maybe_recover() {
   if echo "$recover_out" | grep -q "scheduler redeploy"; then
     REDEPLOY_RECOVERY_ATTEMPTED=true
   fi
+  if echo "$recover_out" | grep -q "host rebuild"; then
+    REBUILD_RECOVERY_ATTEMPTED=true
+  fi
 }
 
 main() {
-  log "=== Gate D Wave 13 host watchdog ==="
+  log "=== Gate D Wave 14 host watchdog ==="
   log "LOBSTER_ROOT=${LOBSTER_ROOT}"
   if [[ "$RECOVER" == true ]]; then
     log "Watchdog: auto-recovery enabled"
@@ -248,6 +267,9 @@ main() {
   fi
   if [[ "$REDEPLOY_RECOVER" == true ]]; then
     log "Watchdog: redeploy recovery enabled"
+  fi
+  if [[ "$REBUILD_RECOVER" == true ]]; then
+    log "Watchdog: rebuild recovery enabled"
   fi
 
   if [[ ! -x "${LOBSTER_ROOT}/.venv/bin/python" && "$DRY_RUN" != true ]]; then

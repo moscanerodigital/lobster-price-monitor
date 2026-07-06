@@ -89,6 +89,25 @@ def plan_tier3_recovery_actions(
     return []
 
 
+def plan_tier4_recovery_actions(
+    status: dict[str, Any],
+    *,
+    tier3_ran: bool = False,
+    still_degraded: bool = False,
+) -> list[str]:
+    """Return tier-4 recovery actions when scheduler redeploy did not restore health."""
+    if status.get("status") == "fatal":
+        return []
+
+    scheduler_mode = status.get("scheduler_mode", "none")
+    if scheduler_mode not in ("dry-run", "ops"):
+        return []
+
+    if still_degraded and tier3_ran:
+        return ["rebuild_host"]
+    return []
+
+
 def action_labels(action: str) -> str:
     labels = {
         "reload_serve": "reload serve unit",
@@ -98,6 +117,7 @@ def action_labels(action: str) -> str:
         "install_watchdog": "install watchdog timer",
         "upgrade_host": "run upgrade_host (refresh deps + reload schedulers)",
         "redeploy_host": "redeploy schedulers (uninstall + reinstall + re-promote ops)",
+        "rebuild_host": "rebuild host (fresh venv + scheduler redeploy)",
     }
     return labels.get(action, action)
 

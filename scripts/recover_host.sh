@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate D Wave 10/12/13 host recovery — status-driven remediation for degraded hosts.
+# Gate D Wave 10/12/13/14 host recovery — status-driven remediation for degraded hosts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,6 +11,8 @@ DEEP=false
 DEEP_RECOVERY_ATTEMPTED=false
 REDEPLOY=false
 REDEPLOY_RECOVERY_ATTEMPTED=false
+REBUILD=false
+REBUILD_RECOVERY_ATTEMPTED=false
 
 OPS_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape.ops"
 DRY_RUN_SCRAPE_LABEL="com.erik.lobster-price-monitor.scrape"
@@ -23,7 +25,7 @@ ACTIONS_TAKEN=()
 
 usage() {
   cat <<'EOF'
-Usage: scripts/recover_host.sh [--dry-run] [--notify] [--force] [--deep] [--deep-recover] [--redeploy] [--redeploy-recover] [--lobster-root PATH]
+Usage: scripts/recover_host.sh [--dry-run] [--notify] [--force] [--deep] [--deep-recover] [--redeploy] [--redeploy-recover] [--rebuild] [--rebuild-recover] [--lobster-root PATH]
 
 Status-driven host auto-recovery for degraded states:
   1. Run status_host.sh --json
@@ -32,8 +34,9 @@ Status-driven host auto-recovery for degraded states:
   4. Tier 1: reload serve, reload scrape scheduler, trigger scrape, health check
   5. Tier 2 (when --deep/--deep-recover or LOBSTER_WATCHDOG_DEEP_RECOVER=1): upgrade_host
   6. Tier 3 (when --redeploy/--redeploy-recover or LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1): redeploy_host
-  7. Re-run status_host.sh and exit with its code
-  8. Optional --notify: deduped Telegram summary of actions taken
+  7. Tier 4 (when --rebuild/--rebuild-recover or LOBSTER_WATCHDOG_REBUILD_RECOVER=1): rebuild_host
+  8. Re-run status_host.sh and exit with its code
+  9. Optional --notify: deduped Telegram summary of actions taken
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -61,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       REDEPLOY=true
       shift
       ;;
+    --rebuild|--rebuild-recover)
+      REBUILD=true
+      shift
+      ;;
     --lobster-root)
       LOBSTER_ROOT="$2"
       shift 2
@@ -83,6 +90,10 @@ fi
 
 if [[ "${LOBSTER_WATCHDOG_REDEPLOY_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REDEPLOY_RECOVER:-}" == "true" ]]; then
   REDEPLOY=true
+fi
+
+if [[ "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "true" ]]; then
+  REBUILD=true
 fi
 
 log() {
@@ -169,6 +180,17 @@ sys.path.insert(0, '${LOBSTER_ROOT}/scripts')
 from recover_actions import plan_tier3_recovery_actions
 status = json.loads(sys.argv[1])
 for action in plan_tier3_recovery_actions(status, tier2_ran=True, still_degraded=True):
+    print(action)
+" "$STATUS_JSON" 2>/dev/null || true)"
+}
+
+plan_tier4_actions() {
+  PLANNED_TIER4_ACTIONS="$("${LOBSTER_ROOT}/.venv/bin/python" -c "
+import json, sys
+sys.path.insert(0, '${LOBSTER_ROOT}/scripts')
+from recover_actions import plan_tier4_recovery_actions
+status = json.loads(sys.argv[1])
+for action in plan_tier4_recovery_actions(status, tier3_ran=True, still_degraded=True):
     print(action)
 " "$STATUS_JSON" 2>/dev/null || true)"
 }
@@ -343,6 +365,15 @@ do_redeploy_host() {
   bash "${LOBSTER_ROOT}/scripts/redeploy_host.sh" "${flags[@]}"
 }
 
+do_rebuild_host() {
+  log "--- Recovery: full host rebuild (fresh venv + scheduler redeploy) ---"
+  record_action "run rebuild_host (tier-4 recovery)"
+  REBUILD_RECOVERY_ATTEMPTED=true
+  local flags=(--skip-scrape --skip-verify --skip-health --lobster-root "$LOBSTER_ROOT")
+  [[ "$DRY_RUN" == true ]] && flags+=(--dry-run)
+  bash "${LOBSTER_ROOT}/scripts/rebuild_host.sh" "${flags[@]}"
+}
+
 execute_action() {
   local action="$1"
   case "$action" in
@@ -353,6 +384,7 @@ execute_action() {
     install_watchdog) do_install_watchdog ;;
     upgrade_host) do_upgrade_host ;;
     redeploy_host) do_redeploy_host ;;
+    rebuild_host) do_rebuild_host ;;
     *)
       log "WARNING: unknown recovery action: $action"
       ;;
@@ -412,13 +444,16 @@ maybe_notify() {
 }
 
 main() {
-  log "=== Gate D Wave 13 host recovery ==="
+  log "=== Gate D Wave 14 host recovery ==="
   log "LOBSTER_ROOT=${LOBSTER_ROOT}"
   if [[ "$DEEP" == true ]]; then
     log "Deep recovery enabled"
   fi
   if [[ "$REDEPLOY" == true ]]; then
     log "Redeploy recovery enabled"
+  fi
+  if [[ "$REBUILD" == true ]]; then
+    log "Rebuild recovery enabled"
   fi
 
   if [[ ! -x "${LOBSTER_ROOT}/.venv/bin/python" && "$DRY_RUN" != true ]]; then
@@ -481,6 +516,17 @@ main() {
     if [[ -n "${PLANNED_TIER3_ACTIONS// }" ]]; then
       log "--- Tier-3 redeploy recovery ---"
       run_planned_actions "$PLANNED_TIER3_ACTIONS" "tier-3 redeploy recovery"
+      run_status
+      after_json="$STATUS_JSON"
+      after_code="$STATUS_CODE"
+    fi
+  fi
+
+  if [[ "$after_code" -eq 1 && "$REBUILD" == true && "$REDEPLOY_RECOVERY_ATTEMPTED" == true ]]; then
+    plan_tier4_actions
+    if [[ -n "${PLANNED_TIER4_ACTIONS// }" ]]; then
+      log "--- Tier-4 rebuild recovery ---"
+      run_planned_actions "$PLANNED_TIER4_ACTIONS" "tier-4 rebuild recovery"
       run_status
       after_json="$STATUS_JSON"
       after_code="$STATUS_CODE"

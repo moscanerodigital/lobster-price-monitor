@@ -47,6 +47,8 @@ def test_status_host_json_flag() -> None:
     assert data["units"]["watchdog_recover_enabled"] is False
     assert "watchdog_redeploy_enabled" in data["units"]
     assert data["units"]["watchdog_redeploy_enabled"] is False
+    assert "watchdog_rebuild_enabled" in data["units"]
+    assert data["units"]["watchdog_rebuild_enabled"] is False
     assert "watchdog_health" in data
     assert data["watchdog_health"]["consecutive_failures"] == 0
     assert data["watchdog_health"]["escalation_threshold"] == 3
