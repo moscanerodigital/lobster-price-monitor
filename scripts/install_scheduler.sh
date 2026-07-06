@@ -17,7 +17,7 @@ Install dry-run scrape + serve schedulers (no Telegram alerts):
   1. Preflight venv and LOBSTER_ROOT
   2. Install scrape + serve units (launchd or systemd)
   3. Optionally install daily health-log unit
-  4. Run make verify-production (host)
+  4. Run make verify-deploy (host)
 
 Set LOBSTER_ROOT to override install path (default: repo root).
 EOF
@@ -198,16 +198,16 @@ install_linux() {
   echo "Linux scheduler install complete (scrape + serve)"
 }
 
-verify_production() {
+verify_deploy() {
   if [[ "$SKIP_VERIFY" == true ]]; then
-    echo "Skipping verify-production"
+    echo "Skipping verify-deploy"
     return 0
   fi
   if [[ "$DRY_RUN" == true ]]; then
-    echo "[dry-run] make -C ${LOBSTER_ROOT} verify-production"
+    echo "[dry-run] make -C ${LOBSTER_ROOT} verify-deploy"
     return 0
   fi
-  make -C "$LOBSTER_ROOT" verify-production
+  make -C "$LOBSTER_ROOT" verify-deploy
 }
 
 main() {
@@ -227,7 +227,7 @@ main() {
       ;;
   esac
 
-  verify_production
+  verify_deploy
   echo "=== Scheduler install succeeded ==="
 }
 

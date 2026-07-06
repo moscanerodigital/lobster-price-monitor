@@ -17,6 +17,27 @@ bash scripts/install.sh
 
 Creates `.venv` and installs `requirements.txt`.
 
+## Host deploy orchestrator (Gate D Wave 5)
+
+Unified entry point for production-host agents:
+
+```bash
+bash scripts/deploy_host.sh --dry-run --phase all          # preview phases 1–2
+bash scripts/deploy_host.sh --dry-run --phase all --promote # preview all phases
+make deploy-host                                            # run phases 1–2
+make deploy-host -- --promote                               # run phases 1–2–3 (live alerts)
+```
+
+| Phase | Script / target | Gate checkpoint |
+|-------|-----------------|-----------------|
+| 1 | `make bootstrap-host` | health + CI-safe verify gates |
+| 2 | `make install-scheduler` | `make verify-deploy` |
+| 3 | `make promote-ops` (opt-in) | `make verify-ops` |
+
+**Rollback:** `make demote-ops` swaps ops scheduler back to dry-run and runs `make verify-deploy`.
+
+**Secrets preflight:** `bash scripts/preflight_secrets.sh` (add `--require-telegram` before ops promotion).
+
 ## Dry-run scrape (no Telegram)
 
 ```bash

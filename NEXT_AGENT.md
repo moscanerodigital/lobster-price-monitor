@@ -25,7 +25,42 @@ Copy [.env.example](.env.example) to `.env` locally if you prefer env-based conf
 
 ---
 
+## Quick start (all phases)
+
+Preview the full host deploy path:
+
+```bash
+export LOBSTER_ROOT=/path/to/lobster-price-monitor
+cd "$LOBSTER_ROOT"
+
+bash scripts/deploy_host.sh --dry-run --phase all          # phases 1–2
+bash scripts/deploy_host.sh --dry-run --phase all --promote # includes phase 3
+```
+
+Run for real (phase 3 requires Telegram secrets):
+
+```bash
+make deploy-host                    # phases 1–2
+make deploy-host -- --promote       # phases 1–2–3 (live alerts)
+```
+
+---
+
 ## Phase 1 — Install and smoke (dry-run, no alerts)
+
+**Recommended (one command):**
+
+```bash
+export LOBSTER_ROOT=/path/to/lobster-price-monitor
+cd "$LOBSTER_ROOT"
+
+make bootstrap-host
+# or: bash scripts/bootstrap_host.sh
+```
+
+This runs install, dry-run scrape, verify gates, health check, and a serve smoke test (curl `board.html` on port 8765).
+
+**Manual fallback:**
 
 ```bash
 export LOBSTER_ROOT=/path/to/lobster-price-monitor
@@ -111,6 +146,13 @@ make promote-ops
 make verify-ops
 ```
 
+**Rollback to dry-run (disable live alerts):**
+
+```bash
+bash scripts/demote_ops.sh --dry-run   # preview
+make demote-ops                        # unload ops → load dry-run → verify-deploy
+```
+
 `promote_ops.sh` swaps dry-run scheduler for ops scheduler (`LOBSTER_ALERTS=1`), runs one confirmation scrape with alerts, then runs `make verify-ops`.
 
 ---
@@ -157,7 +199,11 @@ make verify-ops
 
 | Tool | Purpose |
 |------|---------|
+| `make deploy-host` | Unified orchestrator (phases 1–2; add `--promote` for phase 3) |
+| `make bootstrap-host` | Phase 1 install + dry-run + verify + health |
 | `make install-scheduler` | Install dry-run scrape + serve + health schedulers (Phase 2) |
+| `make demote-ops` | Roll back ops scheduler to dry-run (no live alerts) |
+| `scripts/preflight_secrets.sh` | Check secrets paths without printing values |
 | `make regen-bplus-fixtures` | Regenerate CI Gate B+ fixture data (maintainer-only) |
 | `scripts/send_test_alert.py` | Send live Telegram test alerts — **not a unit test** |
 

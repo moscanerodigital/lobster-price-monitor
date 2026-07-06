@@ -103,6 +103,8 @@ $LOBSTER_ROOT/
 
 **Gate D Wave 4 (2026-07-05):** Host deployment automation — `scripts/install_scheduler.sh` (Phase 2 dry-run scheduler + health timer), Linux `LOBSTER_ROOT` templating in systemd units, `scripts/verify_deploy_gate.py` + `make verify-deploy` / `make verify-deploy-ci`.
 
+**Gate D Wave 5 (2026-07-06):** Host bootstrap and deploy orchestration — `scripts/bootstrap_host.sh` (Phase 1), `scripts/deploy_host.sh` (unified orchestrator), `scripts/demote_ops.sh` (ops rollback), `scripts/preflight_secrets.sh`; `install_scheduler.sh` aligned to `verify-deploy`; `make bootstrap-host` / `make deploy-host` / `make demote-ops`.
+
 **Deploy gate criteria:** `make verify-core` passes · `data/board.html` exists · `health_check.py` passes · dry-run scheduler loaded (ops **not** loaded) · serve unit running. CI: `--skip-scheduling --skip-verify-suite`.
 
 **Current reality (2026-07-05 scrape):** 8/9 markets live in scrape health; **7/8 lobster markets** on the public board. **Five Islands** partial — menu has no $/lb online; spam $5/lb quarantined; board shows nothing (correct).
@@ -120,19 +122,19 @@ $LOBSTER_ROOT/
 | Harbor Fish | soft $14.30 · hard $15.30 | 70 | Web + FB |
 | Five Islands | — (partial) | — | No gated $/lb; see `setup_fb_cookies.md` |
 
-**Ops:** `make install-scheduler` · `make verify-deploy` · `make promote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
+**Ops:** `make deploy-host` · `make bootstrap-host` · `make install-scheduler` · `make verify-deploy` · `make promote-ops` · `make demote-ops` · `make verify-next` · `make verify-next-ci` · `make health` · mobile QA `data/qa/board-390px.png` · cookies doc `setup_fb_cookies.md`
 
 ## Project complete
 
 All gates (AAA → D) pass in CI. Code and verification are complete on `main`.
 
-**Next step:** Host deployment on Mac mini or Chromebox — see **[NEXT_AGENT.md](NEXT_AGENT.md)** for the phased install → scheduler → ops promotion runbook.
+**Next step:** Host deployment on Mac mini or Chromebox — see **[NEXT_AGENT.md](NEXT_AGENT.md)** for the phased runbook. Start with `make deploy-host` (phases 1–2) or `make bootstrap-host` (phase 1 only).
 
 ## Learnings
 
 <!-- auto-updated from run-log -->
 
-- **Latest run** (2026-07-05T16:22:00.961181+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
+- **Latest run** (2026-07-06T00:22:08.059459+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
 - **Five Islands Lobster Co.** (partial): Menu reference only — no live scrape
 
 ## Usage / Budget Log
