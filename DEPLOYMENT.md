@@ -102,7 +102,7 @@ bash scripts/deploy_host.sh --status     # same via orchestrator
 | Code | Git short revision (when `.git` exists) |
 | Scrape | Latest `run-log.jsonl` timestamp; warns if >24h stale |
 | Health | `health_check.py` report (live/blocked markets, readiness) |
-| Serve | Localhost and LAN board URLs |
+| Serve | Localhost, LAN, and Tailscale tailnet board URLs |
 | Secrets | Non-fatal `preflight_secrets.sh` summary |
 
 Exit codes: `0` healthy · `1` degraded · `2` fatal preflight (missing venv, bad `LOBSTER_ROOT`).
@@ -277,8 +277,58 @@ make serve
 ```
 
 - Local: `http://127.0.0.1:8765/board.html`
-- LAN: printed on startup (binds `0.0.0.0` by default)
+- LAN: printed on startup (binds `0.0.0.0` by default via `BIND` / `PORT` in the Makefile)
 - Only `board.html` is served; JSONL data files return 403
+
+### Tailscale (tailnet)
+
+Production schedulers bind `0.0.0.0:8765` (`deploy/launchd/com.erik.lobster-price-monitor.serve.plist` and `deploy/systemd/lobster-price-monitor-serve.service`), so the board is reachable from any device on your Tailscale tailnet at the serving host's `100.x` address.
+
+On the serving host:
+
+```bash
+tailscale ip -4
+# e.g. 100.73.151.113 → http://100.73.151.113:8765/board.html
+
+tailscale status --json | python3 -c "import json,sys; print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))"
+# e.g. eriks-macbook-pro.tailc50b43.ts.net → http://eriks-macbook-pro.tailc50b43.ts.net:8765/board.html
+```
+
+`make status-host` and `scripts/serve_board.py` print tailnet URLs when Tailscale is installed.
+
+**Security notes:**
+
+- Only `board.html` is exposed; `prices.jsonl` and other data files return 403.
+- Tailscale ACLs control which tailnet devices can reach port `8765`. No extra macOS firewall rule is usually needed when the process listens on `*:8765`.
+- If an older install bound `127.0.0.1`, run `make install-scheduler` (or reload the serve unit) after upgrading so it picks up `--host 0.0.0.0`.
+
+### Sharing the board
+
+| Audience | URL | Notes |
+|----------|-----|-------|
+| This machine | `http://127.0.0.1:8765/board.html` | Local only |
+| Tailnet peers | `http://eriks-macbook-pro.tailc50b43.ts.net:8765/board.html` | MagicDNS; requires Tailscale on the viewer's device |
+| Tailnet peers (IP) | `http://100.73.151.113:8765/board.html` | Same as above; use if MagicDNS is unavailable |
+| **Anyone with the link** | `https://eriks-macbook-pro.tailc50b43.ts.net/seafood/board.html` | Public HTTPS via [Tailscale Funnel](https://tailscale.com/kb/1223/tailscale-funnel); read-only `board.html` |
+
+**Recommended share links**
+
+- **Tailnet only** (family/devices on your tailnet): `http://eriks-macbook-pro.tailc50b43.ts.net:8765/board.html`
+- **Public internet** (no Tailscale required): `https://eriks-macbook-pro.tailc50b43.ts.net/seafood/board.html`
+
+Only `board.html` is exposed; `prices.jsonl` and other data files return 403. Funnel does not publish JSONL or scrape logs.
+
+**Enable or refresh public Funnel** (on the serving host, board already on `:8765`):
+
+```bash
+tailscale funnel --bg --yes --set-path=/seafood 8765
+tailscale funnel status
+# → https://<your-host>.ts.net/seafood/board.html
+```
+
+To stop public access while keeping tailnet reachability: `tailscale funnel reset` (removes all funnel routes on this node; re-add other funnel paths if needed).
+
+`make status-host` prints localhost, LAN, and tailnet URLs when Tailscale is installed.
 
 ## Health / readiness
 
@@ -523,6 +573,31 @@ On the **serving host** (Mac mini / Chromebox):
 
 ```bash
 cd "$LOBSTER_ROOT"
+git pull
+make import-five-islands    # Five Islands rows are local-only (not in git)
+# Optional same-machine handoff when dev scraped but serving host is ~/lobster-price-monitor:
+# make sync-scrape-state SOURCE_DATA=/path/to/dev/repo/data
+make upgrade-host           # or restart serve if only board.html changed
+```
+
+### Why `:8765` can show only 3 specials (2026-07-06 QA)
+
+launchd **serve** runs from `$LOBSTER_ROOT` (e.g. `~/lobster-price-monitor`), **not** the Cursor dev clone under `~/Documents/...`. Those are separate `data/prices.jsonl` files (gitignored).
+
+| Location | Typical board specials | Why |
+|----------|------------------------|-----|
+| Dev clone (`~/Documents/...`) | ~23 (25 gated) | Full scrape history + web catalogs |
+| Serving host (`~/lobster-price-monitor`) | **3** before sync | Fresh clone; last scrape deduped 11 rows; only web+1 FB row gated |
+
+**Fix:** `git pull` for `data/board.html`, or copy scrape state:
+
+```bash
+make sync-scrape-state SOURCE_DATA=/path/to/dev/repo/data
+```
+
+Hard-refresh the browser after serve picks up the new `board.html`.
+
+```bash
 git pull
 # board.html is now in data/ — serve unit reads it automatically
 make status-host          # confirm scrape age + serve URL

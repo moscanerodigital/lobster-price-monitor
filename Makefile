@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify verify-core verify-visual test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host redeploy-host rebuild-host reprovision-host status-host watchdog-host recover-host regen-bplus-fixtures import-five-islands
+.PHONY: install scrape serve serve-tailnet health verify verify-core verify-visual test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host redeploy-host rebuild-host reprovision-host status-host watchdog-host recover-host regen-bplus-fixtures import-five-islands sync-scrape-state
 
 install:
 	python3 -m venv $(VENV)
@@ -18,7 +18,20 @@ import-five-islands:
 	$(PYTHON) scripts/manual_import.py --market "Five Islands Lobster Co." --tier soft_shell --price 14.99 --unit lb --kind lobster_tier
 	$(PYTHON) scripts/manual_import.py --market "Five Islands Lobster Co." --tier hard_shell --price 15.99 --unit lb --kind lobster_tier
 
-serve:
+# Copy gated scrape state from dev workspace into LOBSTER_ROOT (local same-machine handoff).
+LOBSTER_ROOT ?= $(HOME)/lobster-price-monitor
+sync-scrape-state:
+	@test -n "$(SOURCE_DATA)" || (echo "Usage: make sync-scrape-state SOURCE_DATA=/path/to/dev/data" && exit 1)
+	cp "$(SOURCE_DATA)/prices.jsonl" "$(LOBSTER_ROOT)/data/prices.jsonl"
+	cp "$(SOURCE_DATA)/run-log.jsonl" "$(LOBSTER_ROOT)/data/run-log.jsonl" 2>/dev/null || true
+	cp "$(SOURCE_DATA)/market-coverage.json" "$(LOBSTER_ROOT)/data/market-coverage.json" 2>/dev/null || true
+	$(MAKE) -C "$(LOBSTER_ROOT)" import-five-islands
+	cd "$(LOBSTER_ROOT)" && $(MAKE) board-html PYTHON=$(LOBSTER_ROOT)/.venv/bin/python
+
+board-html:
+	$(PYTHON) scripts/board.py --html
+
+serve serve-tailnet:
 	$(PYTHON) scripts/serve_board.py --port $(PORT) --host $(BIND)
 
 health:

@@ -9,7 +9,7 @@ from markets import MARKETS
 from parse_prices import _canonical_special_key, _infer_unit_from_clause, oyster_variety_label
 
 _SPECIAL_MAX_AGE = timedelta(days=7)
-_MAX_SPECIALS_PER_MARKET = 10
+_MAX_SPECIALS_PER_MARKET = 14
 _MAX_SPECIALS_TOTAL = 36
 
 _SALVAGE_SPECIES = (
@@ -175,7 +175,7 @@ def _salvage_mashup_special_rows(row: dict) -> list[dict]:
         if not _special_row_coherent(child):
             continue
         label = _special_display_label(child, child.get("key", ""))
-        if _is_publishable_special_label(label):
+        if _is_publishable_special_label(label, row=child):
             salvaged.append(child)
     return salvaged if salvaged else [row]
 
@@ -200,8 +200,16 @@ def _is_stale_special(row: dict) -> bool:
     return age > _SPECIAL_MAX_AGE
 
 
-def _is_publishable_special_label(label: str) -> bool:
-    if not label or len(label) < 4:
+def _is_publishable_special_label(label: str, *, row: dict | None = None) -> bool:
+    if not label:
+        return False
+    if row and row.get("catalog_title"):
+        title = str(row["catalog_title"]).strip()
+        if len(title) >= 4:
+            return True
+    if len(label) < 3:
+        return False
+    if len(label) == 3 and label.lower() not in {"cod", "sea", "eel"}:
         return False
     if label.rstrip().endswith("$"):
         return False

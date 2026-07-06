@@ -269,8 +269,18 @@ def _compute_raw_confidence(
         and is_specials_post(full_text)
     ):
         confidence += FB_MENU_SPECIALS_CONFIDENCE_BOOST
-        if special_has_canonical_key(key) and kw is None:
+        if special_has_canonical_key(key):
             confidence += FB_MENU_CANONICAL_KEY_BOOST
+
+    # Single-line FB product posts (lobster roll, etc.) lack clause keyword window.
+    if (
+        kind == "special"
+        and source in ("facebook", "facebook_search")
+        and special_has_canonical_key(key)
+        and price_pos is None
+        and "$" in snippet
+    ):
+        confidence += 10
 
     if bare_price:
         confidence -= 30

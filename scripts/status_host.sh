@@ -517,6 +517,59 @@ except OSError:
 PY
 }
 
+tailscale_serve_urls() {
+  if [[ "$DRY_RUN" == true ]]; then
+    return 0
+  fi
+  local py="${LOBSTER_ROOT}/.venv/bin/python"
+  if [[ ! -x "$py" ]]; then
+    py="$(command -v python3 || true)"
+  fi
+  if [[ -z "$py" ]]; then
+    return 0
+  fi
+  SERVE_PORT="$SERVE_PORT" "$py" - <<'PY'
+import json
+import os
+import subprocess
+
+port = os.environ.get("SERVE_PORT", "8765")
+try:
+    proc = subprocess.run(
+        ["tailscale", "ip", "-4"],
+        capture_output=True,
+        text=True,
+        timeout=2,
+        check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise SystemExit(0)
+    ts_ip = proc.stdout.strip().splitlines()[0]
+except (OSError, subprocess.TimeoutExpired):
+    raise SystemExit(0)
+
+print(f"http://{ts_ip}:{port}/board.html")
+
+ts_host = None
+try:
+    status = subprocess.run(
+        ["tailscale", "status", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=2,
+        check=False,
+    )
+    if status.returncode == 0 and status.stdout.strip():
+        dns = json.loads(status.stdout).get("Self", {}).get("DNSName", "")
+        ts_host = str(dns).rstrip(".") or None
+except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
+    ts_host = None
+
+if ts_host:
+    print(f"http://{ts_host}:{port}/board.html")
+PY
+}
+
 evaluate_degraded() {
   if [[ "$DRY_RUN" == true ]]; then
     return 0
@@ -618,10 +671,21 @@ print(f\"Watchdog failure streak: {summary['consecutive_failures']} (escalate at
   fi
   log ""
   log "--- Serve ---"
-  local lan
+  local lan tailnet_url tailnet_dns_url
   lan="$(lan_ip)"
   log "Local:  http://127.0.0.1:${SERVE_PORT}/board.html"
   log "LAN:    http://${lan}:${SERVE_PORT}/board.html"
+  tailnet_url=""
+  tailnet_dns_url=""
+  if IFS= read -r tailnet_url; then
+    IFS= read -r tailnet_dns_url || true
+  fi < <(tailscale_serve_urls)
+  if [[ -n "$tailnet_url" ]]; then
+    log "Tailnet: ${tailnet_url}"
+  fi
+  if [[ -n "$tailnet_dns_url" ]]; then
+    log "Tailnet (MagicDNS): ${tailnet_dns_url}"
+  fi
   log ""
   log "--- Secrets ---"
   if [[ "$DRY_RUN" == true ]]; then
@@ -640,8 +704,13 @@ print(f\"Watchdog failure streak: {summary['consecutive_failures']} (escalate at
 }
 
 print_json_report() {
-  local lan
+  local lan tailnet_url tailnet_dns_url
   lan="$(lan_ip)"
+  tailnet_url=""
+  tailnet_dns_url=""
+  if IFS= read -r tailnet_url; then
+    IFS= read -r tailnet_dns_url || true
+  fi < <(tailscale_serve_urls)
 
   if [[ "$DRY_RUN" == true ]]; then
     cat <<EOF
@@ -669,6 +738,8 @@ EOF
   HEALTH_JSON="$HEALTH_JSON" \
   SERVE_PORT="$SERVE_PORT" \
   LAN_IP="$lan" \
+  TAILNET_URL="$tailnet_url" \
+  TAILNET_DNS_URL="$tailnet_dns_url" \
   SECRETS_OK="$SECRETS_OK" \
   DEGRADED="$DEGRADED" \
   "${LOBSTER_ROOT}/.venv/bin/python" - <<'PY'
@@ -725,6 +796,16 @@ report = {
     "serve": {
         "local": f"http://127.0.0.1:{serve_port}/board.html",
         "lan": f"http://{lan_ip}:{serve_port}/board.html",
+        **(
+            {"tailnet": os.environ.get("TAILNET_URL")}
+            if os.environ.get("TAILNET_URL")
+            else {}
+        ),
+        **(
+            {"tailnet_dns": os.environ.get("TAILNET_DNS_URL")}
+            if os.environ.get("TAILNET_DNS_URL")
+            else {}
+        ),
     },
     "secrets_ok": os.environ.get("SECRETS_OK", "true") == "true",
     "status": "degraded" if degraded else "healthy",

@@ -217,6 +217,17 @@ def test_fb_menu_search_uses_raw_confidence_at_gate_b() -> None:
     assert gated.gate_passed, (gated.raw_confidence, gated.confidence, gated.reject_reason)
 
 
+def test_fb_lobster_roll_single_line_passes_gate() -> None:
+    text = "Pine Tree lobster rolls are $24.99 all weekend."
+    gated = score_row(
+        ("special", "lobster_roll", 24.99, "ea", text),
+        source="facebook",
+        observed_at=FRESH_TS,
+        full_text=text,
+    )
+    assert gated.gate_passed, gated.reject_reason
+
+
 def main() -> int:
     tests = [
         test_source_quality,
@@ -231,6 +242,7 @@ def main() -> int:
         test_oyster_each_and_shucked_pkg_bands,
         test_fb_menu_borderline_confidence_passes_with_boost,
         test_fb_menu_search_uses_raw_confidence_at_gate_b,
+        test_fb_lobster_roll_single_line_passes_gate,
         test_two_tides_menu_specials_pass_gate,
     ]
     failures = 0

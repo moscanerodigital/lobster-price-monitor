@@ -708,7 +708,7 @@ def build_board(
         special_label = label
         if bucket == "special":
             special_label = _special_display_label(r, label)
-            if not _is_publishable_special_label(special_label):
+            if not _is_publishable_special_label(special_label, row=r):
                 continue
         display_price, display_unit, display_high, price_is_range = _display_values_from_row(r)
         if bucket == "oyster":
