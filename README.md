@@ -36,7 +36,7 @@ make deploy-host                           # host: phases 1–2 bootstrap + sche
 make upgrade-host                          # host: in-place pull + deps + scheduler reload
 make status-host                           # host: read-only scheduler/health diagnostics
 make recover-host                          # host: auto-recovery for degraded states
-make watchdog-host                         # host: status check + optional Telegram alert
+make watchdog-host                         # host: status check + optional Telegram alert (ops: recover-then-alert)
 make teardown-host                         # host: remove all schedulers
 make bootstrap-host                        # host: phase 1 only
 .venv/bin/python scripts/health_check.py

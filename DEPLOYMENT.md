@@ -127,7 +127,13 @@ bash scripts/deploy_host.sh --watchdog     # same via orchestrator
 
 Watchdog reuses `status_host.sh --json` checks. Deduped alerts log to `alerts_sent.jsonl` with `kind=host_watchdog`.
 
-**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`. Set `LOBSTER_WATCHDOG_RECOVER=1` to enable auto-recovery before alerting.
+**Scheduler:** Ops promotion installs a watchdog timer (10:00 and 22:00 local) with `LOBSTER_WATCHDOG_RECOVER=1` (recover before alert). Opt in on dry-run hosts with `bash scripts/install_scheduler.sh --with-watchdog`.
+
+## Closed-loop ops recovery (Gate D Wave 11)
+
+Ops watchdog runs auto-recovery before alerting. `make verify-ops` on a host checks `LOBSTER_WATCHDOG_RECOVER=1` in the watchdog unit. `status_host.sh --json` reports `units.watchdog_recover_enabled`.
+
+To disable auto-recovery on a host, set `LOBSTER_WATCHDOG_RECOVER=0` in the watchdog plist/systemd unit and reload. Existing ops hosts pick up the default on `make upgrade-host`.
 
 ## Host recovery (Gate D Wave 10)
 
@@ -159,7 +165,7 @@ Recovery actions (based on `status_host.sh --json`):
 
 Does not auto-fix fatal preflight errors or missing secrets.
 
-**Watchdog integration:** `bash scripts/watchdog_host.sh --recover --notify` runs recovery before re-checking status. Scheduled watchdog defaults to alert-only (`LOBSTER_WATCHDOG_RECOVER=0`).
+**Watchdog integration:** `bash scripts/watchdog_host.sh --recover --notify` runs recovery before re-checking status. Scheduled ops watchdog enables this by default (`LOBSTER_WATCHDOG_RECOVER=1`). Alerts after failed recovery include `auto-recovery attempted`.
 
 ## Dry-run scrape (no Telegram)
 

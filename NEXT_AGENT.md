@@ -235,7 +235,13 @@ bash scripts/watchdog_host.sh --notify
 bash scripts/deploy_host.sh --watchdog
 ```
 
-Ops promotion (`make promote-ops`) installs a watchdog timer (2×/day) with `LOBSTER_WATCHDOG_ALERTS=1`. Alerts are deduped for 6 hours per reason set. Dry-run Phase 2 hosts can opt in with `bash scripts/install_scheduler.sh --with-watchdog`.
+Ops promotion (`make promote-ops`) installs a watchdog timer (2×/day) with `LOBSTER_WATCHDOG_ALERTS=1` and `LOBSTER_WATCHDOG_RECOVER=1` (auto-recovery before alert). Alerts are deduped for 6 hours per reason set. Dry-run Phase 2 hosts can opt in with `bash scripts/install_scheduler.sh --with-watchdog`.
+
+### Closed-loop ops recovery (Gate D Wave 11)
+
+The scheduled ops watchdog runs auto-recovery before alerting. If recovery fails, the Telegram alert includes `auto-recovery attempted`. To disable on a host, set `LOBSTER_WATCHDOG_RECOVER=0` in the watchdog unit and reload.
+
+`make verify-ops` on a host also checks that the watchdog unit has recovery enabled.
 
 ### Host auto-recovery (Gate D Wave 10)
 
@@ -255,7 +261,7 @@ bash scripts/recover_host.sh --notify
 bash scripts/deploy_host.sh --recover
 ```
 
-Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --recover --notify`, or set `LOBSTER_WATCHDOG_RECOVER=1` in the watchdog scheduler (default off).
+Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --recover --notify`. On ops hosts the scheduled watchdog enables this by default (`LOBSTER_WATCHDOG_RECOVER=1`). Set `LOBSTER_WATCHDOG_RECOVER=0` to return to alert-only.
 
 **Teardown with purge:** `make teardown-host TEARDOWN_FLAGS=--purge-files` or `bash scripts/deploy_host.sh --teardown --purge-files`.
 

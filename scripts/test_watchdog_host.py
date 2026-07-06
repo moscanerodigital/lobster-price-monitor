@@ -160,6 +160,7 @@ def test_watchdog_alert_cli_dry_run() -> None:
             "--exit-code",
             "1",
             "--dry-run",
+            "--force",
         ],
         cwd=str(ROOT),
         capture_output=True,
@@ -168,6 +169,72 @@ def test_watchdog_alert_cli_dry_run() -> None:
     assert proc.returncode == 0, proc.stderr
     assert "HOST WATCHDOG" in proc.stdout
     assert "stale" in proc.stdout.lower()
+
+
+def test_alert_host_watchdog_recovery_attempted_note() -> None:
+    status = {
+        "status": "degraded",
+        "lobster_root": "/opt/lobster",
+        "git_revision": "abc",
+        "scheduler_mode": "ops",
+        "scrape": {"stale": True, "age_hours": 25.0},
+        "health": {"status": "ready"},
+        "units": {
+            "scrape_loaded": True,
+            "scrape_active": True,
+            "serve_loaded": True,
+            "serve_active": True,
+        },
+        "secrets_ok": True,
+    }
+    reasons = build_watchdog_reasons(status)
+
+    with patch("watchdog_alert.send_telegram", return_value=True) as send_mock:
+        with patch("watchdog_alert._recent_watchdog_alert", return_value=False):
+            assert alert_host_watchdog(
+                status=status,
+                exit_code=1,
+                reasons=reasons,
+                recovery_attempted=True,
+                dry_run=False,
+            )
+        assert "auto-recovery attempted" in send_mock.call_args[0][0]
+
+
+def test_watchdog_alert_cli_recovery_attempted_dry_run() -> None:
+    status = {
+        "status": "degraded",
+        "lobster_root": "/opt/lobster",
+        "git_revision": "abc",
+        "scheduler_mode": "ops",
+        "scrape": {"stale": True, "age_hours": 25.0},
+        "health": {"status": "ready"},
+        "units": {
+            "scrape_loaded": True,
+            "scrape_active": True,
+            "serve_loaded": True,
+            "serve_active": True,
+        },
+        "secrets_ok": True,
+    }
+    proc = subprocess.run(
+        [
+            str(ROOT / ".venv/bin/python"),
+            str(ROOT / "scripts" / "watchdog_alert.py"),
+            "--status-json",
+            json.dumps(status),
+            "--exit-code",
+            "1",
+            "--recovery-attempted",
+            "--dry-run",
+            "--force",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "auto-recovery attempted" in proc.stdout
 
 
 def main() -> int:
@@ -179,7 +246,9 @@ def main() -> int:
         test_build_watchdog_reasons_stale_scrape,
         test_alert_host_watchdog_dedupes_without_force,
         test_alert_host_watchdog_force_bypasses_dedupe,
+        test_alert_host_watchdog_recovery_attempted_note,
         test_watchdog_alert_cli_dry_run,
+        test_watchdog_alert_cli_recovery_attempted_dry_run,
     ]
     failed = 0
     for test in tests:

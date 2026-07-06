@@ -43,6 +43,8 @@ def test_status_host_json_flag() -> None:
     assert "serve" in data
     assert "units" in data
     assert "watchdog_loaded" in data["units"]
+    assert "watchdog_recover_enabled" in data["units"]
+    assert data["units"]["watchdog_recover_enabled"] is False
 
 
 def test_status_host_help() -> None:

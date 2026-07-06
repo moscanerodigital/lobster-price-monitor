@@ -17,7 +17,7 @@
     <key>LOBSTER_WATCHDOG_ALERTS</key>
     <string>1</string>
     <key>LOBSTER_WATCHDOG_RECOVER</key>
-    <string>0</string>
+    <string>1</string>
   </dict>
 
   <key>WorkingDirectory</key>
