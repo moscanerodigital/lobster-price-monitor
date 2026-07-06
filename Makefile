@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve health verify verify-core test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host redeploy-host rebuild-host reprovision-host status-host watchdog-host recover-host regen-bplus-fixtures import-five-islands
+.PHONY: install scrape serve health verify verify-core verify-visual test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host redeploy-host rebuild-host reprovision-host status-host watchdog-host recover-host regen-bplus-fixtures import-five-islands
 
 install:
 	python3 -m venv $(VENV)
@@ -63,8 +63,12 @@ verify-core:
 	$(PYTHON) scripts/test_preflight_secrets.py
 	$(PYTHON) scripts/test_secrets.py
 	$(PYTHON) scripts/test_scrape_publish_gate.py
+	$(PYTHON) scripts/test_board_lobster.py
 
-verify: verify-core
+verify-visual:
+	$(PYTHON) scripts/test_board_visual.py
+
+verify: verify-core verify-visual
 	$(PYTHON) scripts/test_verify_deploy_ci.py
 	$(PYTHON) scripts/verify_aaa_gate.py
 

@@ -45,6 +45,10 @@ from state import (
 
 logger = logging.getLogger(__name__)
 
+# B-05: skip board publish when scrape leaves too few gated rows (partial-run regression).
+BOARD_PUBLISH_MIN_PASSED_ROWS = 40
+BOARD_PUBLISH_MIN_RETENTION_RATIO = 0.6
+
 LOBSTER_TIER_THRESHOLDS = {
     "chicks": 7.50,
     "soft_shell": 8.00,
@@ -461,6 +465,24 @@ def _process_gated_rows(
     return special_items
 
 
+def _passed_row_total(counts: dict[str, int]) -> int:
+    return sum(counts.values())
+
+
+def _should_publish_board(pre_total: int, post_total: int) -> tuple[bool, str | None]:
+    """Return (publish_ok, skip_reason)."""
+    if post_total < BOARD_PUBLISH_MIN_PASSED_ROWS:
+        return False, (
+            f"passed rows {post_total} < floor {BOARD_PUBLISH_MIN_PASSED_ROWS}"
+        )
+    if pre_total > 0 and post_total < pre_total * BOARD_PUBLISH_MIN_RETENTION_RATIO:
+        return False, (
+            f"passed rows {post_total} < {BOARD_PUBLISH_MIN_RETENTION_RATIO:.0%} "
+            f"of pre-scrape {pre_total}"
+        )
+    return True, None
+
+
 def _history_fallback_posts(market_name: str, fetched_posts: list[dict]) -> list[dict]:
     """Older history posts to retry when a fresh fetch gates zero rows."""
     if not fetched_posts:
@@ -637,6 +659,7 @@ def main(*, send_alerts: bool = False) -> int:
     existing_prices = read_jsonl("prices.jsonl")
     persist_seen = {persist_key(r) for r in existing_prices}
     cumulative_passed = count_passed_rows_by_market(existing_prices)
+    pre_scrape_passed_total = _passed_row_total(cumulative_passed)
     history_index = build_history_post_index()
     if send_alerts:
         begin_alert_run()
@@ -768,16 +791,30 @@ def main(*, send_alerts: bool = False) -> int:
             1,
         )
     run_stats["duration_seconds"] = round(time.time() - start_time, 2)
+    post_scrape_passed_total = _passed_row_total(cumulative_passed)
+    run_stats["pre_scrape_passed_rows"] = pre_scrape_passed_total
+    run_stats["post_scrape_passed_rows"] = post_scrape_passed_total
+    publish_ok, skip_reason = _should_publish_board(
+        pre_scrape_passed_total, post_scrape_passed_total
+    )
+    run_stats["board_published"] = publish_ok
+    if not publish_ok:
+        run_stats["board_skip_reason"] = skip_reason
     append_jsonl("run-log.jsonl", run_stats)
     _log_line(log_path, json.dumps(run_stats, ensure_ascii=False))
 
-    try:
-        from board_render import write_html_board
+    if publish_ok:
+        try:
+            from board_render import write_html_board
 
-        board_path = write_html_board()
-        print(f"  [board] wrote {board_path}", flush=True)
-    except Exception as e:
-        print(f"  [board error] {type(e).__name__}: {e}", file=sys.stderr)
+            board_path = write_html_board()
+            print(f"  [board] wrote {board_path}", flush=True)
+        except Exception as e:
+            print(f"  [board error] {type(e).__name__}: {e}", file=sys.stderr)
+    else:
+        msg = f"  [board skip] completeness guard: {skip_reason}"
+        print(msg, flush=True)
+        logger.warning(msg.strip())
 
     try:
         from state import compact_prices_jsonl, rotate_state_files

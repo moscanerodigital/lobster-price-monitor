@@ -8,6 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRAPE_PATH = ROOT / "scripts" / "scrape_markets.py"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from scrape_markets import _should_publish_board
 
 
 def _main_function_source() -> ast.FunctionDef:
@@ -44,10 +47,40 @@ def test_write_html_board_called_once_in_main() -> None:
     assert main_source.count("write_html_board()") == 1
 
 
+def test_should_publish_board_allows_healthy_scrape() -> None:
+    ok, reason = _should_publish_board(52, 52)
+    assert ok is True
+    assert reason is None
+
+
+def test_should_publish_board_blocks_sharp_drop() -> None:
+    ok, reason = _should_publish_board(100, 50)
+    assert ok is False
+    assert reason is not None
+    assert "pre-scrape" in reason
+
+
+def test_should_publish_board_blocks_below_floor() -> None:
+    ok, reason = _should_publish_board(0, 35)
+    assert ok is False
+    assert reason is not None
+    assert "40" in reason
+
+
+def test_should_publish_board_allows_first_run_above_floor() -> None:
+    ok, reason = _should_publish_board(0, 52)
+    assert ok is True
+    assert reason is None
+
+
 def main() -> int:
     tests = [
         test_write_html_board_only_after_run_log,
         test_write_html_board_called_once_in_main,
+        test_should_publish_board_allows_healthy_scrape,
+        test_should_publish_board_blocks_sharp_drop,
+        test_should_publish_board_blocks_below_floor,
+        test_should_publish_board_allows_first_run_above_floor,
     ]
     failed = 0
     for test in tests:

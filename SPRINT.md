@@ -3,7 +3,35 @@
 **Created:** 2026-07-06 (wraps Fable 5 session findings)  
 **Baseline commit:** `bd7771b` (`main`)  
 **Prior session:** ~15 rapid commits (`0f73eee` → `bd7771b`) — caps, oysters, logos, layout, Five Islands manual import  
-**Status at sprint start:** ~70–80% to production; board serves at `:8765`
+**Status at sprint start:** ~70–80% to production; board serves at `:8765`  
+**Wave 3 complete (2026-07-06):** B-05 runtime guard, B-04 tests, C-03 visual QA, D-04 scrape (partial coverage), E-03 dev verify + serving-host runbook below.
+
+### Wave 3 completion metrics (dev scrape 2026-07-06T18:10Z)
+
+| Metric | Result | D-04 bar | Notes |
+|--------|--------|----------|-------|
+| Lobster headlines | 8 | 8 | All markets with lobster data |
+| Oysters | 3 | ≥5 | Harbor Fish web only; FB oyster rows still quarantined |
+| Specials (board) | 19 | ≥25 | 24 gated rows; 3 markets (Harbor Fish, Pine Tree, Ancient Mariner) |
+| Gated rows | 53–56 | — | FB curl returned posts for 2/9 markets; others used history fallback |
+| Board publish guard | active | — | Skips publish when passed rows &lt;40 or &lt;60% of pre-scrape |
+
+**Remaining for full D-04 bar:** Refresh FB cookies; most markets returned zero `<article>` posts despite cookies file present. Re-run `bash scripts/dry_run.sh` after cookie refresh or on serving host with live session.
+
+### E-03 serving-host checklist (run after `git pull`)
+
+```bash
+cd "$LOBSTER_ROOT"    # e.g. ~/lobster-price-monitor — NOT ~/Documents
+git pull
+bash scripts/preflight_secrets.sh
+make import-five-islands
+make upgrade-host
+make verify-deploy
+make status-host
+curl -sf http://127.0.0.1:8765/board.html | head -c 500
+```
+
+**Dev laptop (2026-07-06):** `make verify-core`, `make verify-visual`, and `verify_deploy_gate.py --skip-scheduling` passed; `curl` board OK on `:8765`. Full `make verify-deploy` requires launchd serve agent running (serving host).
 
 > **Note:** The audit/sprint-draft agent (`0dbf344c`) and label-bug agent (`ff9e8fb2`) were **aborted** before landing commits. This document merges their intended output with the **Fable 5 findings ledger** (see Appendix A).
 
@@ -109,7 +137,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** All existing tests pass; no behavior change; file line counts <400 each.  
 **Deps:** None (Wave 2)
 
-### B-02: Oyster & special label correctness (S) — **OPEN BUG**
+### B-02: Oyster & special label correctness (S) — **DONE** (Wave 1 `bb2aa1c`)
 
 **Problem:** `chalk_board_html.py:38-39,95` hardcodes `"per dozen"` when label is `"Oysters"` even for `unit=ea` rows ($1.50, $1.65, $3). User-reported with screenshot.
 
@@ -117,7 +145,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** Free Range shows `$1.50 ea` with secondary `"each"` or variety name; Harbor Fish doz row shows `"per dozen"`; no row shows contradictory unit text.  
 **Deps:** B-01 optional; can ship standalone first
 
-### B-03: Cryptic special label filter (S) — **OPEN BUG**
+### B-03: Cryptic special label filter (S) — **DONE** (Wave 1 `bb2aa1c`)
 
 **Problem:** `"Lob/crab"` displays at $39/lb (Two Tides) — unreadable abbreviation. Expand from FB snippet or reject keys with `/` and length <8 without `catalog_title`.
 
@@ -125,7 +153,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** No cryptic abbreviations on board; Lob/crab expands to readable name or is filtered; test covers slash-abbrev keys.  
 **Deps:** A-03 for source truth
 
-### B-04: Lobster headline accuracy (M)
+### B-04: Lobster headline accuracy (M) — **DONE** (Wave 3)
 
 **Problem:** `_shell_from_key` maps `1.125lb`/`chicks` to `"hard"` without evidence; cull-snippet filter suppresses valid soft-shell (`board_render.py:759-801`).
 
@@ -133,7 +161,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** Two Tides tier label matches FB post shell type; Ancient Mariner soft $13.99 visible when gated.  
 **Deps:** A-01
 
-### B-05: Publish-after-scrape gate (S)
+### B-05: Publish-after-scrape gate (S) — **DONE** (Wave 3: static order + runtime completeness guard)
 
 **Problem:** First Monday publish shipped 4 wrong prices from intermediate snapshot (Scarborough $12.50, salmon $14.99 untraceable).
 
@@ -161,7 +189,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** 1080p viewport: no `.market-groups` scroll; body height ≤1200px OR user accepts single page scroll; logos remain ≥80px desktop.  
 **Deps:** C-01
 
-### C-03: Integration visual QA (S)
+### C-03: Integration visual QA (S) — **DONE** (Wave 3: `scripts/test_board_visual.py`, `make verify-visual`)
 
 **Problem:** No automated visual regression.
 
@@ -197,7 +225,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** Documented one-command import; `make import-five-islands` target; serving-host runbook step; prices verified against wharf reality.  
 **Deps:** None
 
-### D-04: Full scrape + board publish (S)
+### D-04: Full scrape + board publish (S) — **PARTIAL** (Wave 3: scrape + guard; below oyster/special targets — see metrics above)
 
 **Problem:** Serving host and git only get `board.html`; local state not portable.
 
@@ -225,7 +253,7 @@ Wave 3 (serialize): B-02 → C-03 → D-04 (scrape + board regen) → E-03 (veri
 **Acceptance:** CI fails if `board.html` stale vs fixtures or missing demo markers in production mode.  
 **Deps:** B-05
 
-### E-03: Production integration checklist (S)
+### E-03: Production integration checklist (S) — **DONE** (dev verify); serving host: run checklist above after pull
 
 **Run on serving host after sprint:**
 
