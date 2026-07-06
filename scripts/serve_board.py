@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Serve data/board.html on a stable localhost/LAN port."""
+"""Serve data/board.html on localhost, LAN, and Tailscale tailnet."""
 
 from __future__ import annotations
 
 import argparse
 import http.server
+import json
 import os
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -50,6 +52,38 @@ def _lan_ip() -> str:
         return "127.0.0.1"
 
 
+def _tailscale_info() -> tuple[str | None, str | None]:
+    try:
+        proc = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return None, None
+        ts_ip = proc.stdout.strip().splitlines()[0]
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None
+
+    ts_host: str | None = None
+    try:
+        status = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if status.returncode == 0 and status.stdout.strip():
+            dns = json.loads(status.stdout).get("Self", {}).get("DNSName", "")
+            ts_host = str(dns).rstrip(".") or None
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
+        pass
+    return ts_ip, ts_host
+
+
 def _default_host() -> str:
     return os.environ.get("BIND") or os.environ.get("HOST") or "0.0.0.0"
 
@@ -76,8 +110,13 @@ def main() -> int:
     handler = lambda *a, **kw: BoardHandler(*a, directory=str(data_dir), **kw)  # noqa: E731
     server = http.server.ThreadingHTTPServer((args.host, args.port), handler)
     lan = _lan_ip()
+    ts_ip, ts_host = _tailscale_info()
     print(f"Serving board at http://127.0.0.1:{args.port}/board.html")
     print(f"LAN: http://{lan}:{args.port}/board.html")
+    if ts_ip:
+        print(f"Tailnet: http://{ts_ip}:{args.port}/board.html")
+    if ts_host:
+        print(f"Tailnet (MagicDNS): http://{ts_host}:{args.port}/board.html")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
