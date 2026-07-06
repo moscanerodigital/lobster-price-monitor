@@ -461,6 +461,129 @@ def _process_gated_rows(
     return special_items
 
 
+def _history_fallback_posts(market_name: str, fetched_posts: list[dict]) -> list[dict]:
+    """Older history posts to retry when a fresh fetch gates zero rows."""
+    if not fetched_posts:
+        return []
+    fetched_ids = {str(p["post_id"]) for p in fetched_posts}
+    hist = recent_history_posts(market_name, max_age_days=7, limit=5)
+    return [h for h in hist if str(h["post_id"]) not in fetched_ids]
+
+
+def _posts_to_price(posts: list[dict], seen: set) -> list[dict]:
+    return [
+        p
+        for p in posts
+        if p["post_id"] not in seen
+        or "structured_prices" in p
+        or p.get("source") in ("facebook", "facebook_search", "reference")
+    ]
+
+
+def _price_market_posts(
+    market: dict,
+    posts_to_price: list[dict],
+    run_stats: dict,
+    *,
+    send_alerts: bool,
+    persist_seen: set[str],
+    cumulative_passed: dict[str, int],
+) -> int:
+    """Parse, gate, persist, and alert for a batch of posts. Returns passed row count."""
+    passed_count = 0
+    for p in posts_to_price:
+        observed_at = p["timestamp"]
+        source = p.get("source", "unknown")
+        full_text = p.get("text", "")
+
+        if "structured_prices" in p:
+            parsed = [tuple(sp) for sp in p["structured_prices"]]
+            meta = [{"price_pos": None, "bare_price": False, "structured": True} for _ in parsed]
+        else:
+            parsed, meta = parse_post_with_meta(full_text)
+
+        run_stats["prices_parsed"] += len(parsed)
+        passed, quarantined = gate_rows(
+            parsed,
+            source=source,
+            observed_at=observed_at,
+            full_text=full_text,
+            parse_meta=meta,
+        )
+        special_items = _process_gated_rows(
+            passed,
+            quarantined,
+            market,
+            p,
+            observed_at,
+            run_stats,
+            send_alerts=send_alerts,
+            persist_seen=persist_seen,
+            cumulative_passed=cumulative_passed,
+            web_meta=p.get("structured_meta"),
+            structured_prices=p.get("structured_prices"),
+        )
+        passed_count += len(passed)
+
+        if "structured_prices" not in p:
+            gated_specials = [s for s in special_items if s.get("confidence", 0) >= 70]
+            if gated_specials and is_specials_post(full_text):
+                if not send_alerts:
+                    _record_suppressed_alert(
+                        run_stats,
+                        kind="special",
+                        market=market["name"],
+                        detail=f"specials_post:{len(gated_specials)}_items",
+                        url=p.get("url", ""),
+                    )
+                elif alert_specials_post(
+                    market["name"],
+                    p["url"],
+                    full_text,
+                    observed_at,
+                    special_items=gated_specials,
+                    source=source,
+                ):
+                    run_stats["special_alerts"] += 1
+        else:
+            current_specials = {(g.key, g.price, g.unit) for g in passed if g.kind == "special"}
+            prev_specials = last_web_specials(market["name"])
+            new_special_rows = current_specials - prev_specials
+            if new_special_rows:
+                new_items = [
+                    {"key": k, "price": pr, "unit": u, "confidence": g.confidence}
+                    for g in passed
+                    if g.kind == "special"
+                    for k, pr, u in [(g.key, g.price, g.unit)]
+                    if (k, pr, u) in new_special_rows and g.confidence >= 70
+                ]
+                if new_items:
+                    if not send_alerts:
+                        _record_suppressed_alert(
+                            run_stats,
+                            kind="web_special",
+                            market=market["name"],
+                            detail=f"new_web_specials:{len(new_items)}",
+                            url=p.get("url", ""),
+                        )
+                    elif alert_web_specials(
+                        market["name"],
+                        p["url"],
+                        observed_at,
+                        new_items,
+                    ):
+                        run_stats["special_alerts"] += 1
+            save_web_snapshot(
+                market["name"],
+                [
+                    {"key": g.key, "price": g.price, "unit": g.unit}
+                    for g in passed
+                    if g.kind == "special"
+                ],
+            )
+    return passed_count
+
+
 def _setup_run_logging(started: str) -> Path:
     logs_dir = ensure_logs_dir()
     log_path = logs_dir / f"scrape-{started[:10]}.log"
@@ -563,14 +686,7 @@ def main(*, send_alerts: bool = False) -> int:
 
         seen = history_index.get(market_name, set())
         new_posts = [p for p in posts if p["post_id"] not in seen]
-        # Web catalogs change intraday — always re-parse structured prices.
-        posts_to_price = [
-            p
-            for p in posts
-            if p["post_id"] not in seen
-            or "structured_prices" in p
-            or p.get("source") in ("facebook", "facebook_search", "reference")
-        ]
+        posts_to_price = _posts_to_price(posts, seen)
         run_stats["new_posts"] += len(new_posts)
         print(f"    fetched {len(posts)} posts, {len(new_posts)} new", flush=True)
 
@@ -585,99 +701,30 @@ def main(*, send_alerts: bool = False) -> int:
             seen.add(post_id)
             history_index.setdefault(market_name, set()).add(post_id)
 
-        for p in posts_to_price:
-            observed_at = p["timestamp"]
-            source = p.get("source", "unknown")
-            full_text = p.get("text", "")
+        market_passed = _price_market_posts(
+            market,
+            posts_to_price,
+            run_stats,
+            send_alerts=send_alerts,
+            persist_seen=persist_seen,
+            cumulative_passed=cumulative_passed,
+        )
 
-            if "structured_prices" in p:
-                parsed = [tuple(sp) for sp in p["structured_prices"]]
-                meta = [
-                    {"price_pos": None, "bare_price": False, "structured": True} for _ in parsed
-                ]
-            else:
-                parsed, meta = parse_post_with_meta(full_text)
-
-            run_stats["prices_parsed"] += len(parsed)
-            passed, quarantined = gate_rows(
-                parsed,
-                source=source,
-                observed_at=observed_at,
-                full_text=full_text,
-                parse_meta=meta,
-            )
-            special_items = _process_gated_rows(
-                passed,
-                quarantined,
-                market,
-                p,
-                observed_at,
-                run_stats,
-                send_alerts=send_alerts,
-                persist_seen=persist_seen,
-                cumulative_passed=cumulative_passed,
-                web_meta=p.get("structured_meta"),
-                structured_prices=p.get("structured_prices"),
-            )
-            market_passed += len(passed)
-
-            # AC4b specials alert for FB/search posts
-            if "structured_prices" not in p:
-                gated_specials = [s for s in special_items if s.get("confidence", 0) >= 70]
-                if gated_specials and is_specials_post(full_text):
-                    if not send_alerts:
-                        _record_suppressed_alert(
-                            run_stats,
-                            kind="special",
-                            market=market["name"],
-                            detail=f"specials_post:{len(gated_specials)}_items",
-                            url=p.get("url", ""),
-                        )
-                    elif alert_specials_post(
-                        market["name"],
-                        p["url"],
-                        full_text,
-                        observed_at,
-                        special_items=gated_specials,
-                        source=source,
-                    ):
-                        run_stats["special_alerts"] += 1
-            else:
-                # Web catalog specials diff alerting
-                current_specials = {(g.key, g.price, g.unit) for g in passed if g.kind == "special"}
-                prev_specials = last_web_specials(market["name"])
-                new_special_rows = current_specials - prev_specials
-                if new_special_rows:
-                    new_items = [
-                        {"key": k, "price": pr, "unit": u, "confidence": g.confidence}
-                        for g in passed
-                        if g.kind == "special"
-                        for k, pr, u in [(g.key, g.price, g.unit)]
-                        if (k, pr, u) in new_special_rows and g.confidence >= 70
-                    ]
-                    if new_items:
-                        if not send_alerts:
-                            _record_suppressed_alert(
-                                run_stats,
-                                kind="web_special",
-                                market=market["name"],
-                                detail=f"new_web_specials:{len(new_items)}",
-                                url=p.get("url", ""),
-                            )
-                        elif alert_web_specials(
-                            market["name"],
-                            p["url"],
-                            observed_at,
-                            new_items,
-                        ):
-                            run_stats["special_alerts"] += 1
-                save_web_snapshot(
-                    market["name"],
-                    [
-                        {"key": g.key, "price": g.price, "unit": g.unit}
-                        for g in passed
-                        if g.kind == "special"
-                    ],
+        if market_passed == 0 and posts:
+            hist_extra = _history_fallback_posts(market_name, posts)
+            if hist_extra:
+                print(
+                    f"    [history fallback] {len(hist_extra)} older post(s) after gate zero-out",
+                    flush=True,
+                )
+                hist_to_price = _posts_to_price(hist_extra, seen)
+                market_passed += _price_market_posts(
+                    market,
+                    hist_to_price,
+                    run_stats,
+                    send_alerts=send_alerts,
+                    persist_seen=persist_seen,
+                    cumulative_passed=cumulative_passed,
                 )
 
         cumulative_passed_count = cumulative_passed.get(market_name, 0)

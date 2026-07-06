@@ -67,7 +67,7 @@ SAMPLES = [
         [
             ("lobster_tier", "1.25lb_hard_shell", 18.00, "lb"),
             ("special", "lobster_roll", 24.99, "ea"),
-            ("special", "halibut_per_lb", 18.99, "lb"),
+            ("special", "halibut", 18.99, "lb"),
         ],
     ),
     (

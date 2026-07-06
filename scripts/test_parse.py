@@ -32,7 +32,7 @@ SAMPLES = [
         "1.25 lb hard shell Maine lobsters - $22.50 Live or cooked for you. "
         "Fresh picked lobster meat - $69.99/lb For homemade rolls",
         [
-            ("lobster_tier", "hard_shell", 22.50, "lb"),
+            ("lobster_tier", "1.25lb_hard_shell", 22.50, "lb"),
         ],
     ),
     (
