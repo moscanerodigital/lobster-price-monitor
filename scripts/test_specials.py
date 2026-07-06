@@ -127,6 +127,19 @@ def test_salvage_mashup_special_rows():
     assert len(lines) == 1
     assert "Gulf of Maine Haddock" in lines[0]["snippet"]
     assert lines[0]["price"] == 11.99
+    assert lines[0]["key"] == "haddock"
+
+    crab_row = {
+        "kind": "special",
+        "key": "haddock",
+        "price": 21.99,
+        "unit": "ea",
+        "snippet": "11.99 /lb.\n• Maine Crab Meat, 8 oz cup: $21.99 each.\n• North Carolina Swordfish:",
+    }
+    crab_lines = _salvage_mashup_special_rows(crab_row)
+    assert len(crab_lines) == 1
+    assert crab_lines[0]["key"] == "crab"
+    assert crab_lines[0]["price"] == 21.99
 
     free_range = {
         "kind": "special",
@@ -138,6 +151,35 @@ def test_salvage_mashup_special_rows():
     assert len(fr_lines) == 1
     assert "bluefin Tuna" in fr_lines[0]["snippet"]
     assert fr_lines[0]["price"] == 18.99
+
+
+def test_special_row_coherent_rejects_mislabeled_crab():
+    from board_render import _special_row_coherent
+
+    assert _special_row_coherent(
+        {
+            "kind": "special",
+            "key": "haddock",
+            "snippet": "Maine Crab Meat, 8 oz cup: $21.99 each.",
+        }
+    ) is False
+    assert _special_row_coherent(
+        {
+            "kind": "special",
+            "key": "crab",
+            "snippet": "Maine Crab Meat, 8 oz cup: $21.99 each.",
+        }
+    ) is True
+
+
+def test_per_oyster_price_parsing():
+    from parse_prices import parse_post
+
+    rows = parse_post("Oyster bar Fri-Sun afternoons. $3.00 per oyster.")
+    oysters = [r for r in rows if r[0] == "oyster_tier"]
+    assert len(oysters) == 1
+    assert oysters[0][2] == 3.0
+    assert oysters[0][3] == "ea"
 
 
 def test_cap_specials_preserves_all_markets():
@@ -170,6 +212,8 @@ def main() -> int:
         test_is_clean_special_row_accepts_catalog_and_web_snippets,
         test_special_display_label_strips_price_and_fresh_prefix,
         test_salvage_mashup_special_rows,
+        test_special_row_coherent_rejects_mislabeled_crab,
+        test_per_oyster_price_parsing,
         test_cap_specials_preserves_all_markets,
     ]
     failures = 0

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from market_names import short_market
 from markets import MARKETS
-from parse_prices import oyster_variety_label
+from parse_prices import oyster_variety_label, _canonical_special_key, _infer_unit_from_clause
 from state import DATA_DIR, read_json, read_jsonl
 
 _LOBSTER_SIZE_ORDER = {
@@ -314,6 +314,8 @@ _SALVAGE_SPECIES = (
     "lobster roll",
     "chowder",
     "bisque",
+    "sea bass",
+    "bass",
 )
 
 
@@ -344,15 +346,32 @@ def _salvage_mashup_special_rows(row: dict) -> list[dict]:
         labelish = re.sub(r"\$[\d.,]+.*$", "", clean_line, flags=re.I).strip()
         if len(labelish) < 4 or not re.search(r"[a-z]{3,}", labelish, re.I):
             continue
-        child = {**row, "snippet": clean_line, "price": parsed_price}
+        unit_match = re.search(r"/\s*(lb|doz|ea)\b|(?:lb|ea)\b|each", clean_line, re.I)
+        unit = "lb"
+        if unit_match:
+            u = unit_match.group(1) or unit_match.group(0)
+            unit = u.lower().replace("each", "ea")
+        else:
+            unit = _infer_unit_from_clause(clean_line)
+        child = {
+            **row,
+            "snippet": clean_line,
+            "price": parsed_price,
+            "unit": unit,
+            "key": _canonical_special_key(clean_line, None),
+        }
         if child.get("display_price") is not None:
             child["display_price"] = parsed_price
+        if child.get("display_unit"):
+            child["display_unit"] = unit
         if not _is_clean_special_row(child):
+            continue
+        if not _special_row_coherent(child):
             continue
         label = _special_display_label(child, child.get("key", ""))
         if _is_publishable_special_label(label):
             salvaged.append(child)
-    return salvaged
+    return salvaged if salvaged else [row]
 
 
 def _expand_special_rows(rows: list[dict]) -> list[dict]:
@@ -383,6 +402,83 @@ def _is_publishable_special_label(label: str) -> bool:
     if re.search(r"\b(obster|ddock|esh cod)\b", label, re.I):
         return False
     return True
+
+
+def _species_keys_in_text(text: str) -> set[str]:
+    """Canonical special keys mentioned in snippet or catalog title."""
+    from parse_prices import _CANONICAL_SPECIAL_MAP
+
+    found: set[str] = set()
+    text_l = text.lower()
+    for pattern, canonical in _CANONICAL_SPECIAL_MAP:
+        if re.search(pattern, text_l, re.IGNORECASE):
+            found.add(canonical)
+    return found
+
+
+def _special_row_coherent(row: dict) -> bool:
+    """Reject FB rows where parsed key disagrees with the product named in the snippet."""
+    if row.get("catalog_title"):
+        return True
+    snippet = str(row.get("snippet", "")).strip()
+    if not snippet:
+        return True
+    species = _species_keys_in_text(snippet)
+    key = str(row.get("key", ""))
+    if not species:
+        return True
+    if key in species:
+        return True
+    return False
+
+
+def _format_special_freshness(ts: str, source: str) -> str:
+    """Compact freshness badge — only when it adds signal."""
+    dt = _parse_ts(ts)
+    if not dt:
+        return ""
+    now = datetime.now(timezone.utc)
+    age = now - dt.astimezone(timezone.utc)
+    is_fb = source not in ("web", "manual", "reference")
+    if age < timedelta(hours=30) and not is_fb:
+        return ""
+    if age < timedelta(hours=30) and is_fb:
+        return "FB"
+    if age < timedelta(days=3):
+        day = dt.astimezone().strftime("%a")
+        return f"{day} · FB" if is_fb else day
+    stamp = dt.astimezone().strftime("%b %-d").replace(" 0", " ")
+    return f"{stamp} · FB" if is_fb else stamp
+
+
+def _drop_stale_fb_specials_when_web_fresh(rows: list[dict]) -> list[dict]:
+    """Prefer Jul 6 web catalog rows over Jul 4–5 FB search snippets for the same market."""
+    now = datetime.now(timezone.utc)
+    web_fresh: set[str] = set()
+    for row in rows:
+        if row.get("kind") != "special" or row.get("source") != "web":
+            continue
+        dt = _parse_ts(str(row.get("observed_at", "")))
+        if dt and (now - dt.astimezone(timezone.utc)) <= timedelta(hours=48):
+            web_fresh.add(str(row.get("market", "")))
+
+    if not web_fresh:
+        return rows
+
+    kept: list[dict] = []
+    for row in rows:
+        if row.get("kind") != "special":
+            kept.append(row)
+            continue
+        market = str(row.get("market", ""))
+        if market not in web_fresh or row.get("source") == "web":
+            kept.append(row)
+            continue
+        dt = _parse_ts(str(row.get("observed_at", "")))
+        if dt is None or (now - dt.astimezone(timezone.utc)) <= timedelta(hours=48):
+            kept.append(row)
+            continue
+    return kept
 
 
 def _special_display_label(row: dict, fallback: str) -> str:
@@ -985,6 +1081,8 @@ def load_board_rows(
         if r.get("kind") == "special":
             if not _is_clean_special_row(r):
                 continue
+            if not _special_row_coherent(r):
+                continue
             if _is_stale_special(r):
                 continue
         conf = int(r.get("confidence", 0))
@@ -1026,6 +1124,8 @@ def load_board_rows(
             if _is_stale_lobster_key(r.get("key", ""), market_name, keys):
                 continue
         final.append(r)
+
+    final = _drop_stale_fb_specials_when_web_fresh(final)
 
     configs = _market_config_by_name()
     web_lobster_markets: set[str] = set()
@@ -1153,6 +1253,11 @@ def build_board(
             if not _is_publishable_special_label(special_label):
                 continue
         display_price, display_unit, display_high, price_is_range = _display_values_from_row(r)
+        if bucket == "special" and price_is_range and display_high is not None and display_high > display_price:
+            if "salmon" in special_label.lower() or "tuna" in special_label.lower():
+                base = special_label.split("(")[0].strip()
+                if "(by cut)" not in special_label.lower():
+                    special_label = f"{base} (by cut)"
         if kind == "special":
             title = r.get("catalog_title") or r.get("snippet") or label
             dedupe_key = (
@@ -1190,9 +1295,8 @@ def build_board(
         provenance = _provenance_note(r)
         observed_display = _format_observed(r.get("observed_at", ""))
         subtext = ""
-        if bucket == "special" and observed_display and observed_display != "—":
-            source_tag = "web" if r.get("source") == "web" else "FB"
-            subtext = f"{observed_display} · {source_tag}"
+        if bucket == "special":
+            subtext = _format_special_freshness(r.get("observed_at", ""), str(r.get("source", "")))
         item = {
             "label": label,
             "row_primary": (

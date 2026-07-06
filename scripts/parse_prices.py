@@ -101,6 +101,10 @@ _PRICE_EA_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
+_PRICE_PER_OYSTER_RE = re.compile(
+    r"\$\s*(\d+(?:\.\d+)?)\s*per\s*oyster\b",
+    re.IGNORECASE,
+)
 # Bare $X.XX — only when context implies a price (no unit suffix)
 _PRICE_BARE_RE = re.compile(
     r"\$\s*(\d+(?:\.\d+)?)(?!\s*(?:/|per|\s*(?:lb|doz|dz|ea|each|roll)\b))", re.IGNORECASE
@@ -135,6 +139,8 @@ _SPECIAL_KEYWORDS = [
     "hake",
     "smoked",
     "stew",
+    "sea bass",
+    "bass",
 ]
 
 # AC4b specials post detection keywords
@@ -156,6 +162,7 @@ SPECIALS_POST_KEYWORDS = [
     "flounder",
     "bluefish",
     "arctic char",
+    "sea bass",
     "today's catch",
     "catch of the day",
     "special",
@@ -166,6 +173,7 @@ _CANONICAL_SPECIAL_MAP: list[tuple[str, str]] = [
     (r"\blobster\s*rolls?\b", "lobster_roll"),
     (r"\bclam\s*chowder\b", "chowder"),
     (r"\blobster\s*mac\b", "mac"),
+    (r"\b(?:black\s*)?sea\s*bass\b", "sea_bass"),
     (r"\bhalibut\b", "halibut"),
     (r"\bscallops?\b", "scallops"),
     (r"\bclams?\b", "clams"),
@@ -577,6 +585,15 @@ def parse_post(text: str) -> list[ParsedRow]:
         key = grade or "oyster"
         snippet = text[max(0, m.start() - 50) : m.end() + 30].strip()[:120]
         rows.append(("oyster_tier", key, price, "ea", snippet))
+
+    if has_oyster_mention:
+        for m in _PRICE_PER_OYSTER_RE.finditer(text):
+            price = float(m.group(1))
+            clause = _clause_of(text, m.start())
+            grade = _find_oyster_grade_in_clause(clause)
+            key = grade or "oyster"
+            snippet = text[max(0, m.start() - 50) : m.end() + 20].strip()[:120]
+            rows.append(("oyster_tier", key, price, "ea", snippet))
 
     tier_snippets = {r[4] for r in rows if r[0] == "lobster_tier"}
     for m in _PRICE_LB_RE.finditer(text):
