@@ -22,7 +22,7 @@ Tracks live lobster prices and daily-specials posts from 9 Maine coastal market 
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for Mac mini / Chromebox install, scrape, serve, health check, and scheduling.
 
-**Production host deployment:** See **[NEXT_AGENT.md](NEXT_AGENT.md)** for the phased handoff runbook (install → scheduler → ops promotion).
+**Production host deployment:** See **[NEXT_AGENT.md](NEXT_AGENT.md)** for the phased handoff runbook. One command: `make deploy-host` (phases 1–2; add `--promote` for live Telegram).
 
 ```bash
 bash scripts/install.sh
@@ -32,6 +32,8 @@ make install-scheduler                     # host: dry-run scrape + serve + heal
 make verify-production-ci                  # Gate C smoke (B+ fixtures, skip scheduling)
 make verify-deploy-ci                      # Deploy gate smoke (scheduler checks skipped)
 make verify-ops-ci                         # Gate D smoke (learnings + ops verifier)
+make deploy-host                           # host: phases 1–2 bootstrap + scheduler
+make bootstrap-host                        # host: phase 1 only
 .venv/bin/python scripts/health_check.py
 make serve                                 # http://127.0.0.1:8765/board.html (JSONL data not exposed)
 .venv/bin/python scripts/board.py --html --open

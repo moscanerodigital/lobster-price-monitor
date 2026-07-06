@@ -50,13 +50,12 @@ run() {
 }
 
 preflight() {
-  local token="${HOME}/.openclaw/secrets/telegram/herb.token"
-  if [[ ! -f "$token" ]]; then
+  local secrets_flags=(--require-telegram)
+  [[ "$DRY_RUN" == true ]] && secrets_flags+=(--dry-run)
+  if ! bash "${LOBSTER_ROOT}/scripts/preflight_secrets.sh" "${secrets_flags[@]}"; then
     if [[ "$DRY_RUN" == true ]]; then
-      echo "WARNING: Telegram token missing at $token (required for real promotion)"
+      echo "WARNING: secrets preflight would fail for real promotion"
     else
-      echo "ERROR: Telegram token missing at $token" >&2
-      echo "Save Erik's bot token before promoting to ops alerts." >&2
       exit 1
     fi
   fi
