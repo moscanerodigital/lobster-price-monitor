@@ -222,12 +222,13 @@ def _clause_of(text: str, pos: int) -> str:
     comma = text.rfind(",", 0, pos)
     semi = text.rfind(";", 0, pos)
     dot = text.rfind(". ", 0, pos)
+    newline = text.rfind("\n", 0, pos)
 
     double_nl_start = -1
     for m in re.finditer(r"\n[\s\u2063]*\n", text[:pos]):
         double_nl_start = m.end()
 
-    start = max(comma, semi, dot, double_nl_start, and_start)
+    start = max(comma, semi, dot, double_nl_start, and_start, newline)
     if start >= 0:
         if start == and_start or start == double_nl_start:
             return text[start:pos]
@@ -302,7 +303,7 @@ def _find_tier_left_of(text: str, price_pos: int) -> str | None:
 
     boundaries: list[int] = []
     for i, ch in enumerate(left):
-        if ch in (",", ";"):
+        if ch in (",", ";", "\n"):
             boundaries.append(i)
     for i in range(len(left) - 2, -1, -1):
         if left[i] == "." and left[i + 1] == " ":
@@ -477,7 +478,8 @@ def parse_post(text: str) -> list[ParsedRow]:
         if tier:
             clause = _clause_of(text, m.start())
             clause_l = clause.lower()
-            if any(kw in clause_l for kw in ("cull", "culls", "one claw", "no claw")):
+            cull_context = clause_l + text[max(0, m.start() - 80) : m.start()].lower()
+            if any(kw in cull_context for kw in ("cull", "culls", "one claw", "no claw")):
                 continue
             if any(
                 kw in clause_l

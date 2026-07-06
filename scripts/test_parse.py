@@ -110,6 +110,27 @@ SAMPLES = [
             ("special", "haddock", 9.99, "lb"),
         ],
     ),
+    # Ancient Mariner multi-line size menu (newline-delimited tiers)
+    (
+        "Hardshell:\n\n"
+        "1-1 1/8 lbs: $10.99/lb\n"
+        "1 1/4 lbs: $11.99/lb\n"
+        "1 1/2 lbs: $12.99/lb\n"
+        "2+ lbs: $15.99/lb\n\n"
+        "Softshell:\n\n"
+        "All sizes (1lb - 1 1/2 lbs): $10.49/lb\n"
+        "2+ lbs: $13.99/lb\n\n"
+        "Culls (One Claw or No Claws):\n\n"
+        "$8.99/lb",
+        [
+            ("lobster_tier", "1.125lb_hard_shell", 10.99, "lb"),
+            ("lobster_tier", "1.25lb_hard_shell", 11.99, "lb"),
+            ("lobster_tier", "1.5lb_hard_shell", 12.99, "lb"),
+            ("lobster_tier", "2lb_plus_hard_shell", 15.99, "lb"),
+            ("lobster_tier", "1.5lb_soft_shell", 10.49, "lb"),
+            ("lobster_tier", "2lb_plus_soft_shell", 13.99, "lb"),
+        ],
+    ),
     # Salmon roll explicit
     (
         "Smoked salmon roll $14.99/roll at the counter",

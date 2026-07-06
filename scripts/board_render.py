@@ -558,7 +558,12 @@ def _is_valid_headline_tier(item: dict) -> bool:
 def _headline_tier_sort_key(item: dict) -> tuple:
     """Prefer entry-size tiers (chix / 1 lb) over bare aggregates and upsells."""
     key = item.get("key", "")
-    rank = _LOBSTER_HEADLINE_TIER_RANK.get(key, 20)
+    base = key
+    for suffix in ("_soft_shell", "_hard_shell"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    rank = _LOBSTER_HEADLINE_TIER_RANK.get(key, _LOBSTER_HEADLINE_TIER_RANK.get(base, 20))
     return (rank, float(item.get("sort_price", item.get("price", 0))))
 
 
