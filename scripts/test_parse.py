@@ -208,6 +208,67 @@ def test_bullet_items_parse_as_separate_clauses() -> None:
     assert specials == {("halibut", 18.99), ("haddock", 9.99)}
 
 
+def test_steamers_near_lobster_never_emit_lobster_tier() -> None:
+    """Two Tides $4.79 steamers must not bind as lobster_tier."""
+    rows = parse_post("Live lobsters and steamers! Steamers $4.79/lb")
+    lobster = [r for r in rows if r[0] == "lobster_tier"]
+    assert lobster == []
+    steamers = [r for r in rows if r[0] == "special" and r[1] == "steamers"]
+    assert len(steamers) == 1
+    assert steamers[0][2] == 4.79
+    assert steamers[0][3] == "lb"
+
+
+def test_ancient_mariner_clams_not_lobster_tier() -> None:
+    rows = parse_post("Fresh clams $7.99/lb next to our live lobster tank")
+    assert not any(r[0] == "lobster_tier" for r in rows)
+    clams = [r for r in rows if r[0] == "special" and r[1] == "clams"]
+    assert len(clams) == 1
+    assert clams[0][2] == 7.99
+
+
+def test_oyster_each_wins_over_scallops_swordfish_special() -> None:
+    """$X each oyster path must not misclassify as scallops/swordfish."""
+    rows = parse_post("Scallops $22/lb and Maine Oysters $1.50 each")
+    oysters = [r for r in rows if r[0] == "oyster_tier"]
+    assert len(oysters) == 1
+    assert oysters[0][2] == 1.5
+    assert oysters[0][3] == "ea"
+    assert not any(r[0] == "special" and r[1] in ("scallops", "swordfish") and r[3] == "ea" for r in rows)
+
+    rows2 = parse_post("Swordfish steak $18/lb • Maine Oysters $3.00 each")
+    oysters2 = [r for r in rows2 if r[0] == "oyster_tier"]
+    assert len(oysters2) == 1
+    assert oysters2[0][2] == 3.0
+    assert oysters2[0][3] == "ea"
+
+
+def test_snow_crab_and_lob_crab_units_from_fb_snippet() -> None:
+    """Snow crab / Lob-crab rows keep snippet unit; low $/lb crab is not per-oz misparse."""
+    rows = parse_post(
+        "• Snow Crab Salad: $35.99/lb\n• Lob/crab Salad: $39.00/lb\nSnow Crab $3/oz"
+    )
+    by_key = {(r[1], r[2], r[3]) for r in rows if r[0] == "special"}
+    assert ("snow_crab", 35.99, "lb") in by_key
+    assert ("lob_crab", 39.0, "lb") in by_key
+    assert ("snow_crab", 3.0, "oz") in by_key
+    assert ("snow_crab", 3.0, "lb") not in by_key
+    assert not any(r[0] == "lobster_tier" for r in parse_post("Snow Crab $3/lb"))
+
+
+def test_two_tides_menu_steamers_not_lobster_tier() -> None:
+    text = (
+        "Live Maine Lobster\n"
+        "1 1/8 lb: $7.99/lb\n"
+        "Steamers: $4.79/lb\n"
+        "• Snow Crab Salad: $35.99/lb"
+    )
+    rows = parse_post(text)
+    lobster_prices = {r[2] for r in rows if r[0] == "lobster_tier"}
+    assert 4.79 not in lobster_prices
+    assert ("special", "steamers", 4.79, "lb") in [(r[0], r[1], r[2], r[3]) for r in rows]
+
+
 def main() -> int:
     failures = 0
     for i, (text, expected) in enumerate(SAMPLES, 1):

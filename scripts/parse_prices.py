@@ -105,6 +105,12 @@ _PRICE_PER_OYSTER_RE = re.compile(
     r"\$\s*(\d+(?:\.\d+)?)\s*per\s*oyster\b",
     re.IGNORECASE,
 )
+_PRICE_OZ_RE = re.compile(
+    r"\$\s*(\d+(?:\.\d+)?)\s*(?:/\s*oz|per\s*oz)\b",
+    re.IGNORECASE,
+)
+# Low $/lb crab lines are usually per-oz misreads (e.g. Snow Crab $3/oz → $3/lb).
+_CRAB_LB_PRICE_FLOOR = 8.0
 # Bare $X.XX — only when context implies a price (no unit suffix)
 _PRICE_BARE_RE = re.compile(
     r"\$\s*(\d+(?:\.\d+)?)(?!\s*(?:/|per|\s*(?:lb|doz|dz|ea|each|roll)\b))", re.IGNORECASE
@@ -131,6 +137,8 @@ _SPECIAL_KEYWORDS = [
     "clam",
     "crab",
     "mussels",
+    "steamer",
+    "steamers",
     "monkfish",
     "sole",
     "flounder",
@@ -169,14 +177,30 @@ SPECIALS_POST_KEYWORDS = [
     "fish fry",
 ]
 
+# Shellfish / bivalves that must never bind as live lobster tiers.
+_NON_LOBSTER_PRODUCT_KEYWORDS = (
+    "steamer",
+    "steamers",
+    "clam",
+    "clams",
+    "mussel",
+    "mussels",
+    "oyster",
+    "oysters",
+)
+
 _CANONICAL_SPECIAL_MAP: list[tuple[str, str]] = [
     (r"\blobster\s*rolls?\b", "lobster_roll"),
+    (r"\bsnow\s*crab\b", "snow_crab"),
+    (r"\blob\s*/\s*crab\b", "lob_crab"),
+    (r"\blobster\s*&\s*crab\b", "lob_crab"),
     (r"\bclam\s*chowder\b", "chowder"),
     (r"\blobster\s*mac\b", "mac"),
     (r"\b(?:black\s*)?sea\s*bass\b", "sea_bass"),
     (r"\bhalibut\b", "halibut"),
     (r"\bscallops?\b", "scallops"),
     (r"\bclams?\b", "clams"),
+    (r"\bsteamers?\b", "steamers"),
     (r"\bshrimp\b", "shrimp"),
     (r"\bhaddock\b", "haddock"),
     (r"\bsalmon\b", "salmon"),
@@ -300,6 +324,36 @@ def _clause_has_oyster(text: str, price_pos: int) -> bool:
     return "oyster" in clause or "oysters" in clause
 
 
+def _clause_excludes_lobster_tier(text: str, price_pos: int) -> bool:
+    """Steamers/clams and other non-lobster shellfish must not emit lobster_tier."""
+    clause_l = _clause_of(text, price_pos).lower()
+    if any(kw in clause_l for kw in _NON_LOBSTER_PRODUCT_KEYWORDS):
+        return True
+    # Size-tier bleed: "Steamers: $4.79/lb" after a lobster size line.
+    immediate = text[max(0, price_pos - 50) : price_pos].lower()
+    if any(kw in immediate for kw in ("steamer", "steamers", "clam", "clams")):
+        return True
+    return False
+
+
+def _clause_has_oz_unit(clause: str) -> bool:
+    cl = clause.lower()
+    return bool(re.search(r"(?:/\s*oz|per\s*oz|\d+\s*oz\b)", cl))
+
+
+def _price_has_oz_unit(text: str, price_end: int, clause: str) -> bool:
+    tail = text[price_end : price_end + 16].lower()
+    if re.search(r"^\s*(?:/\s*oz|per\s*oz|\s*oz\b)", tail):
+        return True
+    return _clause_has_oz_unit(clause)
+
+
+def _crab_lb_price_implausible(clause_l: str, price: float) -> bool:
+    if price >= _CRAB_LB_PRICE_FLOOR:
+        return False
+    return "crab" in clause_l or "lob/crab" in clause_l or "lobster & crab" in clause_l
+
+
 def _shell_context_at(text: str, price_pos: int) -> str | None:
     """Shell hint from the price clause first — avoids bleed from distant headers."""
     clause = _clause_of(text, price_pos).lower()
@@ -340,6 +394,8 @@ def _qualify_tier_with_shell(tier: str, shell: str | None) -> str:
 
 def _infer_lobster_tier(text: str, price_pos: int) -> str | None:
     """Tier keyword left of price, else lobster-context fallback."""
+    if _clause_excludes_lobster_tier(text, price_pos):
+        return None
     tier = _find_tier_left_of(text, price_pos)
     shell = _shell_context_at(text, price_pos)
     if tier:
@@ -461,6 +517,19 @@ def _find_special_kw(text: str, around_pos: int) -> str | None:
     return None
 
 
+def _find_special_kw_before_price(text: str, price_pos: int) -> str | None:
+    """Clause-scoped keyword lookup — avoids bleed from the next menu line."""
+    kw = _find_special_kw_in_clause(text, price_pos)
+    if kw:
+        return kw
+    s = max(0, price_pos - 80)
+    window = text[s:price_pos].lower()
+    for kw in sorted(_SPECIAL_KEYWORDS, key=len, reverse=True):
+        if kw in window:
+            return kw
+    return None
+
+
 def _find_special_kw_in_clause(text: str, price_pos: int) -> str | None:
     clause = _clause_of(text, price_pos).lower()
     # Prefer longer/more specific matches first
@@ -489,6 +558,8 @@ def _clause_has_special_only(text: str, price_pos: int) -> bool:
 
 def _infer_unit_from_clause(clause: str) -> str:
     cl = clause.lower()
+    if _clause_has_oz_unit(clause):
+        return "oz"
     if any(x in cl for x in ("roll", "each", "dinner", "/ea", " per ea")):
         return "ea"
     if any(x in cl for x in ("/lb", "per pound", "per lb", " lb", "pound")):
@@ -557,15 +628,41 @@ def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
     text = unicodedata.normalize("NFKD", text).replace("\u2044", "/")
     rows: list[tuple[ParsedRow, int]] = []
 
+    for m in _PRICE_OZ_RE.finditer(text):
+        price = float(m.group(1))
+        kw = _find_special_kw_in_clause(text, m.start())
+        if not kw:
+            kw = _find_special_kw_before_price(text, m.start())
+        if kw:
+            clause = _clause_of(text, m.start())
+            snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
+            key = _canonical_special_key(clause, kw)
+            rows.append((("special", key, price, "oz", snippet), m.start()))
+
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
+        clause = _clause_of(text, m.start())
+        clause_l = clause.lower()
+        if _crab_lb_price_implausible(clause_l, price):
+            continue
         # Special keywords in clause take precedence over distant tier keywords
         if _clause_has_special_only(text, m.start()):
             continue
+        if _clause_excludes_lobster_tier(text, m.start()):
+            kw = _find_special_kw_in_clause(text, m.start())
+            if not kw:
+                clause_l = clause.lower()
+                if "steamer" in clause_l:
+                    kw = "steamers"
+                elif "clam" in clause_l:
+                    kw = "clams"
+            if kw:
+                snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
+                key = _canonical_special_key(clause, kw)
+                rows.append((("special", key, price, "lb", snippet), m.start()))
+            continue
         tier = _infer_lobster_tier(text, m.start())
         if tier:
-            clause = _clause_of(text, m.start())
-            clause_l = clause.lower()
             cull_context = clause_l + text[max(0, m.start() - 80) : m.start()].lower()
             if any(kw in cull_context for kw in ("cull", "culls", "one claw", "no claw")):
                 continue
@@ -643,9 +740,13 @@ def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
         snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
         if snippet in tier_snippets:
             continue
+        clause = _clause_of(text, m.start())
+        clause_l = clause.lower()
+        if _crab_lb_price_implausible(clause_l, price):
+            continue
         kw = _find_special_kw_in_clause(text, m.start())
         if not kw:
-            kw = _find_special_kw(text, m.start())
+            kw = _find_special_kw_before_price(text, m.start())
         if kw:
             clause = _clause_of(text, m.start())
             clause_l = clause.lower()
@@ -661,9 +762,11 @@ def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
         if _clause_has_oyster(text, m.start()):
             continue
         price = float(m.group(1))
+        if _clause_has_oz_unit(_clause_of(text, m.start())):
+            continue
         kw = _find_special_kw_in_clause(text, m.start())
         if not kw:
-            kw = _find_special_kw(text, m.start())
+            kw = _find_special_kw_before_price(text, m.start())
         if kw:
             clause = _clause_of(text, m.start())
             snippet = text[max(0, m.start() - 40) : m.end() + 30].strip()[:120]
@@ -672,7 +775,7 @@ def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
 
     # Bare $ prices with contextual unit inference
     covered_positions = set()
-    for pattern in (_PRICE_LB_RE, _PRICE_DOZ_RE, _PRICE_EA_RE):
+    for pattern in (_PRICE_LB_RE, _PRICE_DOZ_RE, _PRICE_EA_RE, _PRICE_OZ_RE):
         for m in pattern.finditer(text):
             covered_positions.add(m.start())
 
@@ -684,6 +787,24 @@ def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
         price = float(m.group(1))
         clause = _clause_of(text, m.start())
         clause_l = clause.lower()
+        if _clause_has_oz_unit(clause):
+            kw = _find_special_kw_in_clause(text, m.start())
+            if kw:
+                snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
+                key = _canonical_special_key(clause, kw)
+                rows.append((("special", key, price, "oz", snippet), m.start()))
+            continue
+        if _price_has_oz_unit(text, m.end(), clause):
+            kw = _find_special_kw_in_clause(text, m.start())
+            if not kw:
+                kw = _find_special_kw(text, m.start())
+            if kw:
+                snippet = text[max(0, m.start() - 40) : m.end() + 20].strip()[:120]
+                key = _canonical_special_key(clause, kw)
+                rows.append((("special", key, price, "oz", snippet), m.start()))
+            continue
+        if _crab_lb_price_implausible(clause_l, price):
+            continue
         tier = _infer_lobster_tier(text, m.start())
         if tier and "lobster" in clause_l and not _find_special_kw_in_clause(text, m.start()):
             if any(
@@ -698,7 +819,7 @@ def _parse_post_rows(text: str) -> list[tuple[ParsedRow, int]]:
             continue
         kw = _find_special_kw_in_clause(text, m.start())
         if not kw:
-            kw = _find_special_kw(text, m.start())
+            kw = _find_special_kw_before_price(text, m.start())
         if kw:
             if any(
                 kw_x in clause_l
@@ -742,4 +863,6 @@ def _has_explicit_unit_in_snippet(snippet: str, unit: str) -> bool:
         return any(x in s for x in ("/doz", "dozen", " dz", " doz"))
     if unit == "ea":
         return any(x in s for x in ("each", "/ea", "/roll", "per roll"))
+    if unit == "oz":
+        return any(x in s for x in ("/oz", "per oz", " oz"))
     return False
