@@ -338,8 +338,8 @@ def render_chalk_html(board: dict) -> str:
       margin: 0.25rem 0 0.45rem;
     }}
     .market-sign-logo {{
-      width: clamp(4rem, 8vw, 6rem);
-      height: clamp(4rem, 8vw, 6rem);
+      width: clamp(4rem, 12vw, 5.5rem);
+      height: clamp(4rem, 12vw, 5.5rem);
       border-radius: 50%;
       object-fit: cover;
       flex-shrink: 0;
@@ -558,11 +558,11 @@ def render_chalk_html(board: dict) -> str:
         gap: 1rem;
       }}
       .market-sign--logo {{
-        margin: 0.15rem 0 0.3rem;
+        margin: 0.35rem 0 0.5rem;
       }}
       .market-sign-logo {{
-        width: 3.25rem;
-        height: 3.25rem;
+        width: clamp(5rem, 6vw, 6rem);
+        height: clamp(5rem, 6vw, 6rem);
       }}
       .price-row {{
         padding: 0.6rem 0;
@@ -684,8 +684,8 @@ def render_chalk_html(board: dict) -> str:
         font-size: 0.95rem;
       }}
       .market-sign-logo {{
-        width: clamp(3.5rem, 14vw, 4rem);
-        height: clamp(3.5rem, 14vw, 4rem);
+        width: 4rem;
+        height: 4rem;
       }}
       .market-sign-label {{
         font-size: 1.1rem;
