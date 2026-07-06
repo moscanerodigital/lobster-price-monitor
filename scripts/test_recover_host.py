@@ -14,7 +14,11 @@ WATCHDOG_SCRIPT = ROOT / "scripts" / "watchdog_host.sh"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from recover_actions import action_labels, plan_deep_recovery_actions, plan_recovery_actions  # noqa: E402
+from recover_actions import (  # noqa: E402
+    action_labels,
+    plan_deep_recovery_actions,
+    plan_recovery_actions,
+)
 from watchdog_alert import alert_host_escalation, alert_host_recovery  # noqa: E402
 
 
