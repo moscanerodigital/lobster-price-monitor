@@ -154,8 +154,10 @@ All gates (AAA → D) pass in CI. Code and verification are complete on `main`.
 
 <!-- auto-updated from run-log -->
 
-- **Latest run** (2026-07-06T02:32:50.041646+00:00): 8/9 markets, 87.5s, avg conf 81.8; alerts: 0 lobster, 0 oyster, 0 specials
-- **Five Islands Lobster Co.** (partial): Menu reference only — no live scrape
+- **Latest run** (2026-07-06T16:12:00.235908+00:00): 9/9 markets, 161.0s, avg conf 79.8; alerts: 0 lobster, 0 oyster, 0 specials; 6 suppressed (--no-alerts)
+- **Five Islands Lobster Co.** (partial): Facebook feed unavailable
+- **Prior run** (2026-07-05T03:44:52.085297+00:00): 9/9 markets
+- **Prior run** (2026-07-05T03:35:05.555531+00:00): 9/9 markets
 
 ## Usage / Budget Log
 

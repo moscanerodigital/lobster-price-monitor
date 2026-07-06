@@ -358,6 +358,7 @@ Watchdog can attempt recovery before alerting: `bash scripts/watchdog_host.sh --
 - **Unauthenticated FB** returns 0 posts — use cookies or rely on web-catalog sources (Pine Tree, Harbor Fish)
 - **Use MoscaGemBot** token at `~/.openclaw/secrets/telegram/herb.token`, NOT CronBot
 - **DDG fallback** is captcha-prone without cookies — Google CSE preferred when configured
+- **Dev laptop (`~/Documents/...`) is not the serving host** — launchd scrape fails there with exit 78 (TCC / `Operation not permitted`). Scrape manually on dev, commit `data/board.html`, push; serving host pulls and serves. See [DEPLOYMENT.md § Dev machine vs serving host](DEPLOYMENT.md#dev-machine-vs-serving-host).
 
 ---
 

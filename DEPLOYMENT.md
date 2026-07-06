@@ -302,7 +302,7 @@ Fails if demo data appears in production mode, provenance is missing, any market
 
 Scrape logs append under `logs/scrape-YYYY-MM-DD.log` (git-ignored).
 
-Runtime data lives in `data/` (git-ignored): `prices.jsonl`, `quarantine.jsonl`, `run-log.jsonl`, `market-coverage.json`, `board.html`.
+Runtime data lives in `data/` (git-ignored): `prices.jsonl`, `quarantine.jsonl`, `run-log.jsonl`, `market-coverage.json`. **`data/board.html` is tracked** so a dev machine can scrape and push today's board for the serving host to pull (see [Dev machine vs serving host](#dev-machine-vs-serving-host) below).
 
 ## Secrets / cookies
 
@@ -453,3 +453,46 @@ To test alert sending and layout without performing a full scrape run (sends **l
 ```bash
 .venv/bin/python scripts/send_test_alert.py
 ```
+
+## Dev machine vs serving host
+
+**July 2026 handoff:** Erik's Cursor dev laptop (`~/Documents/.../lobster-price-monitor`) is **not** the production serving host. Use it to scrape and publish `data/board.html`; the Mac mini / Chromebox pulls and serves.
+
+### Why the dev laptop board went stale (2026-07-06)
+
+- `data/board.html` on the dev machine was last regenerated **2026-07-05** (~11:46 PM ET) before Monday's board.
+- launchd scrape (`com.erik.lobster-price-monitor.scrape`) was loaded but **failed with exit 78** (`EX_CONFIG`). `logs/scrape.err` showed:
+  - `getcwd: cannot access parent directories: Operation not permitted`
+  - `run_scrape.sh: Operation not permitted`
+- **Cause:** macOS privacy (TCC) blocks launchd from executing scripts under `~/Documents/` unless Terminal (or `launchd`) has **Full Disk Access**. Manual scrapes from Cursor/Terminal work; scheduled launchd jobs do not.
+- **Do not serve from the dev laptop long-term.** Stop any manual `serve_board.py` after testing; production serve stays on the dedicated host.
+
+### Publish today's board from dev → pull on serving host
+
+On the **dev machine** (after `bash scripts/dry_run.sh` or `scrape_markets.py --no-alerts`):
+
+```bash
+git add data/board.html .gitignore DEPLOYMENT.md
+git commit -m "Publish Monday board"
+gpa   # or: GIT_PUSH_ALLOWED=1 git push
+```
+
+On the **serving host** (Mac mini / Chromebox):
+
+```bash
+cd "$LOBSTER_ROOT"
+git pull
+# board.html is now in data/ — serve unit reads it automatically
+make status-host          # confirm scrape age + serve URL
+curl -sf http://127.0.0.1:8765/board.html | head -c 200
+```
+
+If the serving host runs its own scrape scheduler, a local scrape will overwrite `board.html` on the next tick — that is expected and preferred once schedulers are healthy there. Until then, the git-pushed board is the handoff path.
+
+### Fix launchd scrape on macOS (serving host or any Mac)
+
+1. Install the repo **outside** `~/Documents` (e.g. `~/lobster-price-monitor` or `/opt/lobster-price-monitor`), **or**
+2. Grant **Full Disk Access** to the process launchd uses (often requires moving the job to a path launchd can read), **or**
+3. Use **cron** or a manual scrape + git publish workflow from an interactive shell.
+
+Verify after fix: `launchctl print gui/$(id -u)/com.erik.lobster-price-monitor.scrape` should show `last exit code = 0` after the next scheduled run, and `logs/scrape.err` should be empty.

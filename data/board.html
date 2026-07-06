@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAINE COAST SEAFOOD BOARD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --board-bg: #0c1612;
+      --board-mid: #142820;
+      --chalk: #f2ead8;
+      --chalk-dim: #b8aa94;
+      --chalk-muted: #8a7d6a;
+      --lobster: #ff8a78;
+      --ocean: #8ec8e8;
+      --gold: #e8c84a;
+      --frame: #4a3418;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #060a08;
+      display: flex;
+      justify-content: center;
+      padding: 0.75rem;
+      font-family: 'Caveat', cursive;
+      color: var(--chalk);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    .board-frame {
+      width: 100%;
+      max-width: min(480px, 100%);
+      background: linear-gradient(165deg, #6a4a20, var(--frame));
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.65);
+    }
+    .board {
+      background: linear-gradient(180deg, var(--board-mid) 0%, var(--board-bg) 100%);
+      border: 3px solid #08100c;
+      border-radius: 4px;
+      padding: 1.25rem 1rem 1rem;
+      min-height: 70vh;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(242,234,216,.12);
+    }
+    h1 {
+      font-size: clamp(1.45rem, 6vw, 2.1rem);
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      line-height: 1.15;
+      color: var(--chalk);
+      word-break: break-word;
+    }
+    .subtitle {
+      font-size: 1.05rem;
+      color: var(--chalk-dim);
+      margin-top: 0.35rem;
+      line-height: 1.4;
+    }
+    .date {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--gold);
+      margin-top: 0.25rem;
+    }
+    .demo-banner {
+      text-align: center;
+      font-size: 1rem;
+      color: var(--gold);
+      margin-bottom: 1rem;
+      opacity: 0.9;
+    }
+    .board-section {
+      margin-bottom: 1.75rem;
+    }
+    .section-heading {
+      font-size: clamp(1.35rem, 5vw, 1.6rem);
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.03em;
+      line-height: 1.3;
+    }
+    .section-lobster .section-heading { color: var(--lobster); }
+    .section-oyster .section-heading { color: var(--ocean); }
+    .section-special .section-heading { color: var(--gold); }
+    .price-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .price-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.5rem;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid rgba(242,234,216,.08);
+      line-height: 1.35;
+    }
+    .price-row:last-child { border-bottom: none; }
+    .row-left {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      min-width: 0;
+      flex: 1;
+    }
+    .row-primary {
+      font-size: clamp(1.2rem, 4.5vw, 1.45rem);
+      font-weight: 700;
+      color: var(--chalk);
+      line-height: 1.25;
+    }
+    .row-secondary {
+      font-size: clamp(1rem, 3.5vw, 1.15rem);
+      font-weight: 600;
+      color: var(--chalk-dim);
+      line-height: 1.3;
+    }
+    .row-subtext {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--chalk-muted);
+      margin-top: 0.15rem;
+      line-height: 1.35;
+    }
+    .row-price {
+      flex: 0 0 auto;
+      text-align: right;
+      white-space: normal;
+      line-height: 1.1;
+      max-width: 100%;
+    }
+    .section-lobster .price-amount { color: var(--lobster); }
+    .section-oyster .price-amount { color: var(--ocean); }
+    .section-special .price-amount { color: var(--gold); }
+    .price-amount {
+      font-size: clamp(1.5rem, 6.5vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .price-unit {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--chalk-dim);
+      margin-left: 0.1em;
+    }
+    .row-price.is-out .price-amount {
+      color: var(--chalk-muted);
+    }
+    .section-empty {
+      font-size: 1.1rem;
+      color: var(--chalk-muted);
+      font-style: italic;
+      padding: 0.5rem 0;
+    }
+    footer {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(242,234,216,.1);
+      text-align: center;
+    }
+    .markets-details {
+      text-align: left;
+    }
+    .markets-details summary {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--chalk-dim);
+      cursor: pointer;
+      list-style: none;
+      text-align: center;
+      line-height: 1.5;
+      padding: 0.25rem 0;
+    }
+    .markets-details summary::-webkit-details-marker { display: none; }
+    .markets-details[open] summary {
+      margin-bottom: 0.75rem;
+      color: var(--chalk);
+    }
+    .footer-summary {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--chalk-dim);
+      line-height: 1.5;
+    }
+    .footer-meta {
+      font-size: 0.95rem;
+      color: var(--chalk-muted);
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+    .blocked-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .blocked-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      padding: 0.5rem 0.65rem;
+      background: rgba(0,0,0,.2);
+      border-radius: 4px;
+      line-height: 1.35;
+    }
+    .blocked-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--chalk-dim);
+    }
+    .blocked-reason {
+      font-size: 0.9rem;
+      color: var(--chalk-muted);
+    }
+    .price-row.is-consolidated .row-secondary {
+      font-size: clamp(0.95rem, 3.2vw, 1.1rem);
+      color: var(--chalk-dim);
+      letter-spacing: 0.01em;
+    }
+    .price-amount.is-wide {
+      font-size: clamp(1.35rem, 5.5vw, 1.75rem);
+    }
+    .markets-details summary::after {
+      content: " ▾";
+      font-size: 0.85em;
+      opacity: 0.7;
+    }
+    .markets-details[open] summary::after {
+      content: " ▴";
+    }
+    @media (min-width: 481px) {
+      .price-row {
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .row-price {
+        flex-shrink: 0;
+      }
+    }
+    @media (max-width: 480px) {
+      body { padding: 0.5rem; }
+      .board-frame { padding: 8px; }
+      .board { padding: 1rem 0.85rem; }
+      h1 {
+        font-size: 1.55rem;
+        letter-spacing: 0.02em;
+        word-break: break-word;
+      }
+      .price-row {
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 0.35rem 0.5rem;
+        padding: 0.75rem 0;
+      }
+      .row-price {
+        flex: 0 0 100%;
+        text-align: left;
+        white-space: normal;
+        padding-left: 0.1rem;
+      }
+      .price-amount { font-size: 1.75rem; }
+      .price-amount.is-wide { font-size: 1.4rem; }
+      .price-row.is-consolidated .price-amount { font-size: 1.55rem; }
+      .price-row.is-consolidated {
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .price-row.is-consolidated .row-left {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .price-row.is-consolidated .row-price {
+        flex: 0 0 auto;
+        text-align: right;
+        padding-left: 0;
+      }
+      .price-row.is-consolidated .row-secondary {
+        font-size: 0.95rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="board-frame">
+    <div class="board">
+      <header>
+        <h1>MAINE COAST SEAFOOD BOARD</h1>
+        <p class="subtitle">Gorham base · Maine coast watchlist</p>
+        <p class="date">Monday, July 6</p>
+      </header>
+      
+      <div class="board-body">
+        <section class="board-section section-lobster"><h2 class="section-heading">🦞 LIVE LOBSTER</h2><ul class="price-list"><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">Two Tides</span><span class="row-secondary">1⅛ lb · hard $7.99</span></div><div class="row-price"><span class="price-amount">$7.99</span><span class="price-unit">/lb</span></div></li><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">SoPo Seafood</span><span class="row-secondary">hard $8.95</span></div><div class="row-price"><span class="price-amount">$8.95</span><span class="price-unit">/lb</span></div></li><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">Free Range</span><span class="row-secondary">soft $9.99 · hard $9.99</span></div><div class="row-price"><span class="price-amount">$9.99</span><span class="price-unit">/lb</span></div></li><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">Scarborough F&amp;L</span><span class="row-secondary">soft $10.99 · hard $12.50</span></div><div class="row-price"><span class="price-amount is-wide">$10.99–$12.50</span><span class="price-unit">/lb</span></div></li><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">Ancient Mariner</span><span class="row-secondary">hard $12.99</span></div><div class="row-price"><span class="price-amount">$12.99</span><span class="price-unit">/lb</span></div></li><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">Pine Tree</span><span class="row-secondary">soft $13.50 · hard $14.50</span></div><div class="row-price"><span class="price-amount is-wide">$13.50–$14.50</span><span class="price-unit">/lb</span></div></li><li class="price-row section-lobster is-consolidated"><div class="row-left"><span class="row-primary">Harbor Fish</span><span class="row-secondary">soft $14.30 · hard $15.30</span></div><div class="row-price"><span class="price-amount is-wide">$14.30–$15.30</span><span class="price-unit">/lb</span></div></li></ul></section><section class="board-section section-oyster"><h2 class="section-heading">🦪 OYSTERS</h2><ul class="price-list"><li class="price-row section-oyster"><div class="row-left"><span class="row-primary">Harbor Fish Oys</span><span class="row-secondary">per dozen</span></div><div class="row-price"><span class="price-amount">$23.88</span><span class="price-unit">/doz</span></div></li></ul></section><section class="board-section section-special"><h2 class="section-heading">🐟 TODAY&#x27;S SPECIALS</h2><ul class="price-list"><li class="price-row section-special"><div class="row-left"><span class="row-primary">Pine Tree — Lobster Roll</span></div><div class="row-price"><span class="price-amount">$24.99</span><span class="price-unit">ea</span></div></li><li class="price-row section-special"><div class="row-left"><span class="row-primary">Pine Tree — Medium Maine Haddock</span></div><div class="row-price"><span class="price-amount">$17.99</span><span class="price-unit">/lb</span></div></li><li class="price-row section-special"><div class="row-left"><span class="row-primary">Harbor Fish — Hake Fillet</span></div><div class="row-price"><span class="price-amount">$13.99</span><span class="price-unit">/lb</span></div></li><li class="price-row section-special"><div class="row-left"><span class="row-primary">Harbor Fish — Atlantic Salmon Steaks</span></div><div class="row-price"><span class="price-amount">$14.99</span><span class="price-unit">/lb</span></div></li><li class="price-row section-special"><div class="row-left"><span class="row-primary">SoPo Seafood — 50 /lb.
+• Gulf of Maine Haddock Fillet: $11.99 /lb.
+• Maine Crab Meat,</span></div><div class="row-price"><span class="price-amount">$11.99</span><span class="price-unit">/lb</span></div></li></ul></section><section class="board-section section-trends"><h2 class="section-heading">📈 Price Trends</h2><div class="chart-container" style="position: relative; height: 180px; width: 100%; margin-top: 0.5rem; border-bottom: 1px solid rgba(242,234,216,.08); padding-bottom: 1.5rem;"><canvas id="trendsChart"></canvas></div></section>
+      </div>
+      <footer>
+        <details class="markets-details"><summary>8 live · 1 awaiting feed</summary><ul class="blocked-list"><li class="blocked-item partial"><span class="blocked-name">Five Islands</span><span class="blocked-reason">Facebook feed unavailable</span></li></ul></details>
+        <p class="footer-meta">Updated Jul 6 · 12:13 PM</p>
+      </footer>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    (function() {
+      const ctx = document.getElementById('trendsChart');
+      if (!ctx) return;
+      const trends = {"labels": ["Jul 05", "Jul 06"], "soft_shell": [14.28, 15.33], "hard_shell": [13.82, 16.88]};
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: trends.labels || [],
+          datasets: [
+            {
+              label: 'Soft Shell ($/lb)',
+              data: trends.soft_shell || [],
+              borderColor: '#ff8a78', // var(--lobster)
+              backgroundColor: 'rgba(255, 138, 120, 0.1)',
+              borderWidth: 2,
+              tension: 0.15,
+              spanGaps: true,
+              pointBackgroundColor: '#ff8a78',
+              pointRadius: 3
+            },
+            {
+              label: 'Hard Shell ($/lb)',
+              data: trends.hard_shell || [],
+              borderColor: '#8ec8e8', // var(--ocean)
+              backgroundColor: 'rgba(142, 200, 232, 0.1)',
+              borderWidth: 2,
+              tension: 0.15,
+              spanGaps: true,
+              pointBackgroundColor: '#8ec8e8',
+              pointRadius: 3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: {
+                color: '#f2ead8', // var(--chalk)
+                font: {
+                  family: "'Caveat', cursive",
+                  size: 14
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: {
+                color: 'rgba(242, 234, 216, 0.08)'
+              },
+              ticks: {
+                color: '#b8aa94', // var(--chalk-dim)
+                font: {
+                  family: "'Caveat', cursive",
+                  size: 12
+                }
+              }
+            },
+            y: {
+              grid: {
+                color: 'rgba(242, 234, 216, 0.08)'
+              },
+              ticks: {
+                color: '#b8aa94',
+                font: {
+                  family: "'Caveat', cursive",
+                  size: 12
+                },
+                callback: function(value) {
+                  return '$' + value;
+                }
+              }
+            }
+          }
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
