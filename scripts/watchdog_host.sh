@@ -11,10 +11,12 @@ RECOVER=false
 DEEP_RECOVER=false
 REDEPLOY_RECOVER=false
 REBUILD_RECOVER=false
+REPROVISION_RECOVER=false
 RECOVERY_ATTEMPTED=false
 DEEP_RECOVERY_ATTEMPTED=false
 REDEPLOY_RECOVERY_ATTEMPTED=false
 REBUILD_RECOVERY_ATTEMPTED=false
+REPROVISION_RECOVERY_ATTEMPTED=false
 INITIAL_STATUS_CODE=0
 CONSECUTIVE_FAILURES=0
 
@@ -36,6 +38,9 @@ enabled by LOBSTER_WATCHDOG_REDEPLOY_RECOVER=1 on ops watchdog units).
 
 With --rebuild-recover, pass tier-4 rebuild recovery to recover_host.sh (also
 enabled by LOBSTER_WATCHDOG_REBUILD_RECOVER=1 on ops watchdog units).
+
+With --reprovision-recover, pass tier-5 reprovision recovery to recover_host.sh (also
+enabled by LOBSTER_WATCHDOG_REPROVISION_RECOVER=1 on ops watchdog units).
 
 Default: check-only (no Telegram). Use --notify or set LOBSTER_WATCHDOG_ALERTS=1
 to send alerts (requires Telegram secrets).
@@ -76,6 +81,10 @@ while [[ $# -gt 0 ]]; do
       REBUILD_RECOVER=true
       shift
       ;;
+    --reprovision-recover)
+      REPROVISION_RECOVER=true
+      shift
+      ;;
     --lobster-root)
       LOBSTER_ROOT="$2"
       shift 2
@@ -112,6 +121,10 @@ if [[ "${LOBSTER_WATCHDOG_REBUILD_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REBU
   REBUILD_RECOVER=true
 fi
 
+if [[ "${LOBSTER_WATCHDOG_REPROVISION_RECOVER:-}" == "1" || "${LOBSTER_WATCHDOG_REPROVISION_RECOVER:-}" == "true" ]]; then
+  REPROVISION_RECOVER=true
+fi
+
 log() {
   echo "$@"
 }
@@ -146,6 +159,7 @@ record_health_outcome() {
   [[ "$DEEP_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--deep-recovery-attempted)
   [[ "$REDEPLOY_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--redeploy-recovery-attempted)
   [[ "$REBUILD_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--rebuild-recovery-attempted)
+  [[ "$REPROVISION_RECOVERY_ATTEMPTED" == true ]] && record_flags+=(--reprovision-recovery-attempted)
   [[ "$recovered" == true ]] && record_flags+=(--recovered)
 
   if [[ "$DRY_RUN" == true ]]; then
@@ -204,6 +218,7 @@ maybe_notify() {
   [[ "$DEEP_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--deep-recovery-attempted)
   [[ "$REDEPLOY_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--redeploy-recovery-attempted)
   [[ "$REBUILD_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--rebuild-recovery-attempted)
+  [[ "$REPROVISION_RECOVERY_ATTEMPTED" == true ]] && alert_flags+=(--reprovision-recovery-attempted)
 
   if [[ "$use_escalation" == true ]]; then
     alert_flags+=(--escalation --consecutive-failures "$CONSECUTIVE_FAILURES")
@@ -239,6 +254,7 @@ maybe_recover() {
   [[ "$DEEP_RECOVER" == true ]] && recover_flags+=(--deep-recover)
   [[ "$REDEPLOY_RECOVER" == true ]] && recover_flags+=(--redeploy-recover)
   [[ "$REBUILD_RECOVER" == true ]] && recover_flags+=(--rebuild-recover)
+  [[ "$REPROVISION_RECOVER" == true ]] && recover_flags+=(--reprovision-recover)
 
   local recover_out
   set +e
@@ -254,10 +270,13 @@ maybe_recover() {
   if echo "$recover_out" | grep -q "host rebuild"; then
     REBUILD_RECOVERY_ATTEMPTED=true
   fi
+  if echo "$recover_out" | grep -q "host reprovision"; then
+    REPROVISION_RECOVERY_ATTEMPTED=true
+  fi
 }
 
 main() {
-  log "=== Gate D Wave 14 host watchdog ==="
+  log "=== Gate D Wave 15 host watchdog ==="
   log "LOBSTER_ROOT=${LOBSTER_ROOT}"
   if [[ "$RECOVER" == true ]]; then
     log "Watchdog: auto-recovery enabled"
@@ -270,6 +289,9 @@ main() {
   fi
   if [[ "$REBUILD_RECOVER" == true ]]; then
     log "Watchdog: rebuild recovery enabled"
+  fi
+  if [[ "$REPROVISION_RECOVER" == true ]]; then
+    log "Watchdog: reprovision recovery enabled"
   fi
 
   if [[ ! -x "${LOBSTER_ROOT}/.venv/bin/python" && "$DRY_RUN" != true ]]; then

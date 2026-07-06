@@ -38,6 +38,7 @@ WATCHDOG_LOADED=false
 WATCHDOG_RECOVER_ENABLED=false
 WATCHDOG_REDEPLOY_ENABLED=false
 WATCHDOG_REBUILD_ENABLED=false
+WATCHDOG_REPROVISION_ENABLED=false
 
 usage() {
   cat <<'EOF'
@@ -317,6 +318,41 @@ collect_watchdog_rebuild_config() {
   esac
 }
 
+collect_watchdog_reprovision_config() {
+  if [[ "$DRY_RUN" == true ]]; then
+    WATCHDOG_REPROVISION_ENABLED=false
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    Darwin)
+      local plist="${HOME}/Library/LaunchAgents/com.erik.lobster-price-monitor.watchdog.plist"
+      if [[ ! -f "$plist" ]]; then
+        plist="${LOBSTER_ROOT}/deploy/launchd/com.erik.lobster-price-monitor.watchdog.plist"
+      fi
+      if [[ -f "$plist" ]]; then
+        local text
+        text="$(cat "$plist")"
+        if echo "$text" | grep -q '<key>LOBSTER_WATCHDOG_REPROVISION_RECOVER</key>' && \
+           echo "$text" | grep -A1 '<key>LOBSTER_WATCHDOG_REPROVISION_RECOVER</key>' | grep -q '<string>1</string>'; then
+          WATCHDOG_REPROVISION_ENABLED=true
+        fi
+      fi
+      ;;
+    Linux)
+      local unit_text=""
+      if systemctl cat lobster-price-monitor-watchdog.service &>/dev/null; then
+        unit_text="$(systemctl cat lobster-price-monitor-watchdog.service 2>/dev/null)"
+      elif [[ -f "${LOBSTER_ROOT}/deploy/systemd/lobster-price-monitor-watchdog.service" ]]; then
+        unit_text="$(cat "${LOBSTER_ROOT}/deploy/systemd/lobster-price-monitor-watchdog.service")"
+      fi
+      if echo "$unit_text" | grep -qE 'LOBSTER_WATCHDOG_REPROVISION_RECOVER=1'; then
+        WATCHDOG_REPROVISION_ENABLED=true
+      fi
+      ;;
+  esac
+}
+
 preflight() {
   if [[ ! -d "$LOBSTER_ROOT" ]]; then
     echo "ERROR: LOBSTER_ROOT does not exist: $LOBSTER_ROOT" >&2
@@ -523,6 +559,7 @@ print_human_report() {
     log "Watchdog auto-recovery: ${WATCHDOG_RECOVER_ENABLED}"
     log "Watchdog redeploy recovery: ${WATCHDOG_REDEPLOY_ENABLED}"
     log "Watchdog rebuild recovery: ${WATCHDOG_REBUILD_ENABLED}"
+    log "Watchdog reprovision recovery: ${WATCHDOG_REPROVISION_ENABLED}"
   fi
   if [[ "$DRY_RUN" != true ]]; then
     local streak_line
@@ -587,7 +624,7 @@ print_json_report() {
 
   if [[ "$DRY_RUN" == true ]]; then
     cat <<EOF
-{"lobster_root":"${LOBSTER_ROOT}","dry_run":true,"scheduler_mode":"${SCHEDULER_MODE}","git_revision":"${GIT_REVISION}","scrape":{"timestamp":"${SCRAPE_TS}","age_hours":0,"stale":false},"health":{"status":"dry-run"},"units":{"watchdog_loaded":false,"watchdog_recover_enabled":false,"watchdog_redeploy_enabled":false,"watchdog_rebuild_enabled":false},"watchdog_health":{"consecutive_failures":0,"escalation_threshold":3,"should_escalate":false,"last_outcome":null},"serve":{"local":"http://127.0.0.1:${SERVE_PORT}/board.html","lan":"http://${lan}:${SERVE_PORT}/board.html"},"secrets_ok":true,"status":"dry-run"}
+{"lobster_root":"${LOBSTER_ROOT}","dry_run":true,"scheduler_mode":"${SCHEDULER_MODE}","git_revision":"${GIT_REVISION}","scrape":{"timestamp":"${SCRAPE_TS}","age_hours":0,"stale":false},"health":{"status":"dry-run"},"units":{"watchdog_loaded":false,"watchdog_recover_enabled":false,"watchdog_redeploy_enabled":false,"watchdog_rebuild_enabled":false,"watchdog_reprovision_enabled":false},"watchdog_health":{"consecutive_failures":0,"escalation_threshold":3,"should_escalate":false,"last_outcome":null},"serve":{"local":"http://127.0.0.1:${SERVE_PORT}/board.html","lan":"http://${lan}:${SERVE_PORT}/board.html"},"secrets_ok":true,"status":"dry-run"}
 EOF
     return 0
   fi
@@ -607,6 +644,7 @@ EOF
   WATCHDOG_RECOVER_ENABLED="$WATCHDOG_RECOVER_ENABLED" \
   WATCHDOG_REDEPLOY_ENABLED="$WATCHDOG_REDEPLOY_ENABLED" \
   WATCHDOG_REBUILD_ENABLED="$WATCHDOG_REBUILD_ENABLED" \
+  WATCHDOG_REPROVISION_ENABLED="$WATCHDOG_REPROVISION_ENABLED" \
   HEALTH_JSON="$HEALTH_JSON" \
   SERVE_PORT="$SERVE_PORT" \
   LAN_IP="$lan" \
@@ -650,6 +688,7 @@ report = {
         "watchdog_recover_enabled": os.environ.get("WATCHDOG_RECOVER_ENABLED", "false") == "true",
         "watchdog_redeploy_enabled": os.environ.get("WATCHDOG_REDEPLOY_ENABLED", "false") == "true",
         "watchdog_rebuild_enabled": os.environ.get("WATCHDOG_REBUILD_ENABLED", "false") == "true",
+        "watchdog_reprovision_enabled": os.environ.get("WATCHDOG_REPROVISION_ENABLED", "false") == "true",
     },
     "scrape": {
         "timestamp": scrape_ts or None,
@@ -688,6 +727,7 @@ main() {
   collect_watchdog_recover_config
   collect_watchdog_redeploy_config
   collect_watchdog_rebuild_config
+  collect_watchdog_reprovision_config
   collect_git_revision
   collect_scrape_freshness
   collect_health

@@ -135,6 +135,23 @@ def _text_has_rebuild_recover_flag(text: str) -> bool:
     return False
 
 
+def _text_has_reprovision_recover_flag(text: str) -> bool:
+    lowered = text.lower()
+    if "lobster_watchdog_reprovision_recover=1" in lowered.replace(" ", ""):
+        return True
+    if re.search(r"lobster_watchdog_reprovision_recover\s*=\s*1", text, re.IGNORECASE):
+        return True
+    if re.search(r"lobster_watchdog_reprovision_recover\s*=\s*true", text, re.IGNORECASE):
+        return True
+    if re.search(
+        r"<key>LOBSTER_WATCHDOG_REPROVISION_RECOVER</key>\s*<string>1</string>",
+        text,
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
 def _text_has_alerts_flag(text: str) -> bool:
     lowered = text.lower()
     if "lobster_alerts=1" in lowered.replace(" ", ""):
@@ -524,6 +541,58 @@ def check_watchdog_rebuild_recovery_enabled(*, skip_alerts_check: bool) -> None:
         print("  ! Unknown OS — skipping watchdog rebuild recovery verification")
 
 
+def _watchdog_unit_has_reprovision_recover_flag() -> bool:
+    lobster_root = os.environ.get("LOBSTER_ROOT", str(ROOT))
+
+    if sys.platform == "darwin":
+        watchdog_path = (
+            Path.home()
+            / "Library/LaunchAgents/com.erik.lobster-price-monitor.watchdog.plist"
+        )
+        if not watchdog_path.exists():
+            watchdog_path = (
+                Path(lobster_root)
+                / "deploy/launchd/com.erik.lobster-price-monitor.watchdog.plist"
+            )
+        if watchdog_path.exists():
+            return _text_has_reprovision_recover_flag(watchdog_path.read_text(encoding="utf-8"))
+        return False
+
+    if sys.platform.startswith("linux"):
+        proc = subprocess.run(
+            ["systemctl", "cat", "lobster-price-monitor-watchdog"],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0 and _text_has_reprovision_recover_flag(proc.stdout):
+            return True
+        watchdog_service = Path(lobster_root) / "deploy/systemd/lobster-price-monitor-watchdog.service"
+        if watchdog_service.exists():
+            return _text_has_reprovision_recover_flag(watchdog_service.read_text(encoding="utf-8"))
+        return False
+
+    return True
+
+
+def check_watchdog_reprovision_recovery_enabled(*, skip_alerts_check: bool) -> None:
+    if skip_alerts_check:
+        print("  ! watchdog reprovision recovery check skipped (CI mode)")
+        return
+
+    if not _watchdog_unit_has_reprovision_recover_flag():
+        _fail(
+            "watchdog unit lacks LOBSTER_WATCHDOG_REPROVISION_RECOVER=1 — "
+            "reinstall watchdog via make promote-ops or make upgrade-host"
+        )
+
+    if sys.platform == "darwin":
+        print("  ✓ watchdog launchd plist has LOBSTER_WATCHDOG_REPROVISION_RECOVER=1")
+    elif sys.platform.startswith("linux"):
+        print("  ✓ watchdog systemd unit has LOBSTER_WATCHDOG_REPROVISION_RECOVER=1")
+    else:
+        print("  ! Unknown OS — skipping watchdog reprovision recovery verification")
+
+
 def check_alerts_enabled(*, skip_alerts_check: bool) -> None:
     if skip_alerts_check:
         print("  ! alerts check skipped (CI mode)")
@@ -600,6 +669,10 @@ def main() -> int:
         (
             "watchdog_rebuild_recovery_enabled",
             lambda: check_watchdog_rebuild_recovery_enabled(skip_alerts_check=args.skip_alerts_check),
+        ),
+        (
+            "watchdog_reprovision_recovery_enabled",
+            lambda: check_watchdog_reprovision_recovery_enabled(skip_alerts_check=args.skip_alerts_check),
         ),
     ]
 

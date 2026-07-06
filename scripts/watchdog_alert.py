@@ -168,6 +168,7 @@ def alert_host_escalation(
     deep_recovery_attempted: bool = False,
     redeploy_recovery_attempted: bool = False,
     rebuild_recovery_attempted: bool = False,
+    reprovision_recovery_attempted: bool = False,
 ) -> bool:
     """Send deduped escalation Telegram when failure streak meets threshold."""
     if not reasons:
@@ -190,6 +191,8 @@ def alert_host_escalation(
         recovery_notes.append("redeploy recovery attempted")
     if rebuild_recovery_attempted:
         recovery_notes.append("rebuild recovery attempted")
+    if reprovision_recovery_attempted:
+        recovery_notes.append("reprovision recovery attempted")
     recovery_note = ""
     if recovery_notes:
         recovery_note = "\n· " + " · ".join(recovery_notes)
@@ -200,7 +203,7 @@ def alert_host_escalation(
         f"{reason_lines}{recovery_note}\n"
         f"LOBSTER_ROOT: {lobster_root}\n"
         f"rev: {git_rev}\n"
-        f"try: make upgrade-host · make redeploy-host · make rebuild-host · make recover-host · make demote-ops · make status-host"
+        f"try: make upgrade-host · make redeploy-host · make rebuild-host · make reprovision-host · make recover-host · make demote-ops · make status-host"
     )
 
     if dry_run:
@@ -296,6 +299,7 @@ def alert_host_watchdog(
     deep_recovery_attempted: bool = False,
     redeploy_recovery_attempted: bool = False,
     rebuild_recovery_attempted: bool = False,
+    reprovision_recovery_attempted: bool = False,
 ) -> bool:
     """Send deduped host-health Telegram. Returns True if sent."""
     if not reasons:
@@ -318,6 +322,8 @@ def alert_host_watchdog(
         recovery_notes.append("redeploy recovery attempted")
     if rebuild_recovery_attempted:
         recovery_notes.append("rebuild recovery attempted")
+    if reprovision_recovery_attempted:
+        recovery_notes.append("reprovision recovery attempted")
     recovery_note = ""
     if recovery_notes:
         recovery_note = "\n· " + " · ".join(recovery_notes)
@@ -393,6 +399,11 @@ def main() -> int:
         action="store_true",
         help="Note in alert that rebuild recovery was attempted",
     )
+    parser.add_argument(
+        "--reprovision-recovery-attempted",
+        action="store_true",
+        help="Note in alert that reprovision recovery was attempted",
+    )
     args = parser.parse_args()
 
     if args.escalation:
@@ -414,6 +425,7 @@ def main() -> int:
             deep_recovery_attempted=args.deep_recovery_attempted,
             redeploy_recovery_attempted=args.redeploy_recovery_attempted,
             rebuild_recovery_attempted=args.rebuild_recovery_attempted,
+            reprovision_recovery_attempted=args.reprovision_recovery_attempted,
         )
         return 0
 
@@ -450,6 +462,7 @@ def main() -> int:
         deep_recovery_attempted=args.deep_recovery_attempted,
         redeploy_recovery_attempted=args.redeploy_recovery_attempted,
         rebuild_recovery_attempted=args.rebuild_recovery_attempted,
+        reprovision_recovery_attempted=args.reprovision_recovery_attempted,
     )
     return 0
 

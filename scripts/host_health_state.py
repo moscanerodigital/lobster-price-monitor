@@ -90,6 +90,7 @@ def record_outcome(
     deep_recovery_attempted: bool = False,
     redeploy_recovery_attempted: bool = False,
     rebuild_recovery_attempted: bool = False,
+    reprovision_recovery_attempted: bool = False,
     recovered: bool = False,
     escalated: bool = False,
 ) -> int:
@@ -123,6 +124,7 @@ def record_outcome(
             "deep_recovery_attempted": deep_recovery_attempted,
             "redeploy_recovery_attempted": redeploy_recovery_attempted,
             "rebuild_recovery_attempted": rebuild_recovery_attempted,
+            "reprovision_recovery_attempted": reprovision_recovery_attempted,
             "consecutive_failures": new_streak,
         },
     )
@@ -141,6 +143,7 @@ def main() -> int:
     parser.add_argument("--deep-recovery-attempted", action="store_true")
     parser.add_argument("--redeploy-recovery-attempted", action="store_true")
     parser.add_argument("--rebuild-recovery-attempted", action="store_true")
+    parser.add_argument("--reprovision-recovery-attempted", action="store_true")
     parser.add_argument("--recovered", action="store_true")
     parser.add_argument("--escalated", action="store_true")
     args = parser.parse_args()
@@ -152,6 +155,7 @@ def main() -> int:
             deep_recovery_attempted=args.deep_recovery_attempted,
             redeploy_recovery_attempted=args.redeploy_recovery_attempted,
             rebuild_recovery_attempted=args.rebuild_recovery_attempted,
+            reprovision_recovery_attempted=args.reprovision_recovery_attempted,
             recovered=args.recovered,
             escalated=args.escalated,
         )
