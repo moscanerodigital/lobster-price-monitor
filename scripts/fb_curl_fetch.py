@@ -10,15 +10,23 @@ import hashlib
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from secrets import load_fb_cookies
 from urllib.parse import quote_plus
+
+from parse_prices import is_specials_post
 
 logger = logging.getLogger(__name__)
 
 _TEXT_RE = re.compile(r'"text":"((?:\\.|[^"\\])*)"')
 _LOBSTER_PRICE_HINT = re.compile(
     r"\$\s*\d+(?:\.\d+)?\s*(?:/\s*lb|/lb|\s*lb\b|lb\b)",
+    re.IGNORECASE,
+)
+_SEAFOOD_MENU_HINT = re.compile(
+    r"\b(?:halibut|haddock|salmon|scallop|oyster|shrimp|crab|chowder|bisque|"
+    r"swordfish|tuna|cod|sole|mussel|clam|steamer)\b",
     re.IGNORECASE,
 )
 
@@ -50,6 +58,25 @@ _OTHER_MARKET_TOKENS: dict[str, tuple[str, ...]] = {
 }
 
 
+@dataclass
+class FetchDiagnostics:
+    """Per-market FB curl fetch outcome for scrape logging."""
+
+    texts_found: int = 0
+    texts_filtered: int = 0
+    http_errors: list[str] = field(default_factory=list)
+    last_status: int | None = None
+
+    def summary(self) -> str:
+        if self.http_errors and not self.texts_found:
+            return self.http_errors[-1]
+        if self.texts_found and self.texts_filtered >= self.texts_found:
+            return "filtered"
+        if not self.texts_found:
+            return "no_text"
+        return "ok"
+
+
 def _load_cookie_dict() -> dict[str, str] | None:
     return load_fb_cookies()
 
@@ -73,22 +100,19 @@ def _extract_post_texts(html: str) -> list[str]:
 
 def _page_urls(fb_handle: str) -> list[str]:
     handle = fb_handle.strip("/")
-    bases: list[str] = []
     if handle.isdigit():
-        bases = [
-            f"https://www.facebook.com/profile.php?id={handle}",
-            f"https://m.facebook.com/profile.php?id={handle}",
+        return [
             f"https://mbasic.facebook.com/profile.php?id={handle}",
+            f"https://m.facebook.com/profile.php?id={handle}",
+            f"https://www.facebook.com/profile.php?id={handle}",
         ]
-    else:
-        bases = [
-            f"https://www.facebook.com/{handle}",
-            f"https://m.facebook.com/{handle}",
-            f"https://mbasic.facebook.com/{handle}",
-            f"https://www.facebook.com/{handle}/posts",
-            f"https://m.facebook.com/{handle}/posts",
-        ]
-    return bases
+    return [
+        f"https://mbasic.facebook.com/{handle}",
+        f"https://m.facebook.com/{handle}",
+        f"https://www.facebook.com/{handle}",
+        f"https://mbasic.facebook.com/{handle}/posts",
+        f"https://m.facebook.com/{handle}/posts",
+    ]
 
 
 def _search_urls(market_name: str, fb_handle: str) -> list[str]:
@@ -113,7 +137,6 @@ def _text_matches_market(text: str, market_name: str, fb_handle: str) -> bool:
     if _is_spam_price_post(text):
         return False
     lower = text.lower()
-    # Reject posts that mention another configured market by name/handle.
     for token in _OTHER_MARKET_TOKENS.get(market_name, ()):
         if token in lower:
             return False
@@ -126,7 +149,6 @@ def _text_matches_market(text: str, market_name: str, fb_handle: str) -> bool:
     first_word = market_name.split()[0].lower()
     if len(first_word) > 3 and first_word in lower:
         return True
-    # Price-menu posts on the market's own page (not search).
     if _LOBSTER_PRICE_HINT.search(text) and any(
         kw in lower
         for kw in ("menu price", "updated price", "current menu", "hardshell:", "softshell:")
@@ -170,14 +192,40 @@ def _post_has_lobster_price(text: str) -> bool:
     return bool(_LOBSTER_PRICE_HINT.search(text))
 
 
+def _post_is_seafood_menu(text: str) -> bool:
+    """Menu/specials posts without explicit lobster $/lb."""
+    if "$" not in text:
+        return False
+    if is_specials_post(text):
+        return True
+    lower = text.lower()
+    if _SEAFOOD_MENU_HINT.search(text) and any(
+        ch in text for ch in ("•", "\n", "menu", "today", "catch", "special")
+    ):
+        return True
+    if _SEAFOOD_MENU_HINT.search(text) and lower.count("$") >= 2:
+        return True
+    return False
+
+
+def _page_post_acceptable(text: str, market_name: str, fb_handle: str) -> bool:
+    return (
+        _post_has_lobster_price(text)
+        or _text_matches_market(text, market_name, fb_handle)
+        or _post_is_seafood_menu(text)
+    )
+
+
 def fetch_fb_posts(
     market_name: str,
     fb_handle: str,
     *,
     max_posts: int = 10,
     skip_search: bool = False,
+    diagnostics: FetchDiagnostics | None = None,
 ) -> list[dict]:
     """Return normalized post dicts from FB page HTML (+ optional search fallback)."""
+    diag = diagnostics or FetchDiagnostics()
     cookies = _load_cookie_dict()
     if not cookies:
         return []
@@ -195,8 +243,12 @@ def fetch_fb_posts(
     def _add(text: str, url: str, source: str) -> None:
         if source == "facebook_search":
             if not _search_text_matches_market(text, market_name, fb_handle):
+                diag.texts_filtered += 1
                 return
-        elif not _text_matches_market(text, market_name, fb_handle):
+        elif not _text_matches_market(text, market_name, fb_handle) and not _post_is_seafood_menu(
+            text
+        ):
+            diag.texts_filtered += 1
             return
         key = text.strip()[:200]
         if key in seen_text:
@@ -214,21 +266,26 @@ def fetch_fb_posts(
             }
         )
 
-    for url in _page_urls(fb_handle)[:3]:
+    for url in _page_urls(fb_handle)[:4]:
         if len(results) >= max_posts:
             break
         try:
             resp = session.get(url, cookies=cookies, timeout=15)
+            diag.last_status = resp.status_code
             if resp.status_code != 200:
+                diag.http_errors.append(f"http_{resp.status_code}")
                 continue
-            for text in _extract_post_texts(resp.text):
-                if _post_has_lobster_price(text) or _text_matches_market(
-                    text, market_name, fb_handle
-                ):
+            texts = _extract_post_texts(resp.text)
+            diag.texts_found += len(texts)
+            for text in texts:
+                if _page_post_acceptable(text, market_name, fb_handle):
                     _add(text, url, "facebook")
+                else:
+                    diag.texts_filtered += 1
                 if len(results) >= max_posts:
                     break
-        except Exception:
+        except Exception as exc:
+            diag.http_errors.append(type(exc).__name__)
             continue
 
     if not skip_search and len(results) < max_posts:
@@ -237,15 +294,21 @@ def fetch_fb_posts(
                 break
             try:
                 resp = session.get(url, cookies=cookies, timeout=15)
+                diag.last_status = resp.status_code
                 if resp.status_code != 200:
+                    diag.http_errors.append(f"http_{resp.status_code}")
                     continue
-                for text in _extract_post_texts(resp.text):
-                    if not _post_has_lobster_price(text):
+                texts = _extract_post_texts(resp.text)
+                diag.texts_found += len(texts)
+                for text in texts:
+                    if not (_post_has_lobster_price(text) or _post_is_seafood_menu(text)):
+                        diag.texts_filtered += 1
                         continue
                     _add(text, url, "facebook_search")
                     if len(results) >= max_posts:
                         break
-            except Exception:
+            except Exception as exc:
+                diag.http_errors.append(type(exc).__name__)
                 continue
 
     return results[:max_posts]

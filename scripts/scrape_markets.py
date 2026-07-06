@@ -118,19 +118,27 @@ def _scrape_market(market: dict) -> tuple[list[dict], str | None]:
 
     if cookies:
         try:
-            from fb_curl_fetch import fetch_fb_posts
+            from fb_curl_fetch import FetchDiagnostics, fetch_fb_posts
             from quality_gate import source_quality_score
 
+            fb_diag = FetchDiagnostics()
             curl_posts = fetch_fb_posts(
                 market["name"],
                 market["fb_handle"],
                 max_posts=10,
+                diagnostics=fb_diag,
             )
             if curl_posts:
                 print(f"  [fb curl] {market['name']}: {len(curl_posts)} posts", flush=True)
                 for p in curl_posts:
                     p["source_quality"] = source_quality_score(p.get("source", "facebook"))
                 results = curl_posts
+            elif cookies:
+                reason = fb_diag.summary()
+                print(
+                    f"  [fb curl] {market['name']}: 0 posts ({reason})",
+                    flush=True,
+                )
         except Exception as e:
             fb_error = f"{type(e).__name__}: {e}"
             print(f"  [fb curl error] {market['fb_handle']}: {fb_error}", file=sys.stderr)

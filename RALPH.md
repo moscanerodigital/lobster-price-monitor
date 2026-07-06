@@ -154,14 +154,12 @@ All gates (AAA → D) pass in CI. Code and verification are complete on `main`.
 
 <!-- auto-updated from run-log -->
 
-- **Latest run** (2026-07-06T18:07:34.828032+00:00): 9/9 markets, 169.2s, avg conf 79.9; alerts: 0 lobster, 0 oyster, 0 specials; 3 suppressed (--no-alerts)
+- **Latest run** (2026-07-06T18:20:25.951760+00:00): 9/9 markets, 145.7s, avg conf 80.3; alerts: 0 lobster, 0 oyster, 0 specials; 4 suppressed (--no-alerts)
 - **Two Tides Seafood** (blocked): Facebook feed unavailable
 - **Scarborough Fish & Lobster** (blocked): Facebook feed unavailable
-- **Harbor Fish Market (Lobster)** (blocked): Facebook feed unavailable
-- **Harbor Fish Market (Oysters)** (blocked): Facebook feed unavailable
-- **Free Range Fish & Lobster** (blocked): Facebook feed unavailable
+- **Five Islands Lobster Co.** (blocked): Facebook feed unavailable
+- **Prior run** (2026-07-06T18:07:34.828032+00:00): 9/9 markets
 - **Prior run** (2026-07-06T17:51:07.828398+00:00): 9/9 markets
-- **Prior run** (2026-07-06T17:42:49.337093+00:00): 8/9 markets
 
 ## Usage / Budget Log
 

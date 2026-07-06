@@ -490,7 +490,15 @@ lan_ip() {
     echo "127.0.0.1"
     return 0
   fi
-  "${LOBSTER_ROOT}/.venv/bin/python" - <<'PY'
+  local py="${LOBSTER_ROOT}/.venv/bin/python"
+  if [[ ! -x "$py" ]]; then
+    py="$(command -v python3 || true)"
+  fi
+  if [[ -z "$py" ]]; then
+    echo "127.0.0.1"
+    return 0
+  fi
+  "$py" - <<'PY'
 import socket
 try:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -507,8 +515,14 @@ evaluate_degraded() {
     return 0
   fi
 
-  local health_status
-  health_status="$("${LOBSTER_ROOT}/.venv/bin/python" -c "import json,sys; print(json.loads(sys.argv[1]).get('status','unknown'))" "$HEALTH_JSON")"
+  local py="${LOBSTER_ROOT}/.venv/bin/python"
+  if [[ ! -x "$py" ]]; then
+    py="$(command -v python3 || true)"
+  fi
+  local health_status="unknown"
+  if [[ -n "$py" && -n "$HEALTH_JSON" ]]; then
+    health_status="$("$py" -c 'import json,sys; print(json.loads(sys.argv[1]).get("status","unknown"))' "$HEALTH_JSON")"
+  fi
 
   if [[ "$health_status" != "ready" ]]; then
     DEGRADED=true

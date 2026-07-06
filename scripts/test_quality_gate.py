@@ -201,6 +201,22 @@ def test_two_tides_menu_specials_pass_gate() -> None:
     ]
 
 
+def test_fb_menu_search_uses_raw_confidence_at_gate_b() -> None:
+    """facebook_search menu specials must not lose 10% at Gate B after menu boost."""
+    text = "Today's catch menu:\n• Gulf of Maine Haddock Fillet: $11.99/lb"
+    row = ("special", "haddock", 11.99, "lb", "Gulf of Maine Haddock Fillet: $11.99/lb")
+    pos = text.find("$11.99")
+    gated = score_row(
+        row,
+        source="facebook_search",
+        observed_at=FRESH_TS,
+        full_text=text,
+        price_pos=pos,
+        bare_price=False,
+    )
+    assert gated.gate_passed, (gated.raw_confidence, gated.confidence, gated.reject_reason)
+
+
 def main() -> int:
     tests = [
         test_source_quality,
@@ -214,6 +230,7 @@ def main() -> int:
         test_is_specials_post,
         test_oyster_each_and_shucked_pkg_bands,
         test_fb_menu_borderline_confidence_passes_with_boost,
+        test_fb_menu_search_uses_raw_confidence_at_gate_b,
         test_two_tides_menu_specials_pass_gate,
     ]
     failures = 0

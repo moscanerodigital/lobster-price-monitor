@@ -64,6 +64,7 @@ verify-core:
 	$(PYTHON) scripts/test_secrets.py
 	$(PYTHON) scripts/test_scrape_publish_gate.py
 	$(PYTHON) scripts/test_board_lobster.py
+	$(PYTHON) scripts/test_fb_curl_fetch.py
 
 verify-visual:
 	$(PYTHON) scripts/test_board_visual.py
@@ -134,7 +135,7 @@ test: verify
 verify-next-ci: seed-ci-bplus-fixtures verify
 	$(PYTHON) scripts/verify_next_gate.py --min-lobster-markets 7
 
-verify-ci: seed-ci-fixtures verify
+verify-ci: seed-ci-fixtures verify verify-visual
 
 verify-production-ci: seed-ci-bplus-fixtures verify
 	$(PYTHON) scripts/verify_production_gate.py --skip-scheduling

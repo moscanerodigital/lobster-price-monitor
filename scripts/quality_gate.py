@@ -285,9 +285,16 @@ def _gate_b_confidence(
     kind: str,
     raw_confidence: int,
     source_quality: float,
+    *,
+    fb_menu_special: bool = False,
 ) -> tuple[bool, int, str | None]:
-    # Source quality scales effective confidence (Gate A multiplier applied here)
-    effective = int(round(raw_confidence * source_quality))
+    # Authenticated FB menu posts: compare raw confidence (boost already applied in
+    # _compute_raw_confidence). Scaling by source_quality would drop 70→63 for
+    # facebook_search and block legitimate menu lines.
+    if fb_menu_special and kind == "special":
+        effective = raw_confidence
+    else:
+        effective = int(round(raw_confidence * source_quality))
     threshold = min_confidence_for_kind(kind)
     if effective < threshold:
         return False, effective, f"gate_b:low_confidence:{effective}"
@@ -457,7 +464,15 @@ def score_row(
         bare_price=bare_price,
         structured=structured,
     )
-    gate_b_ok, effective, gate_b_reason = _gate_b_confidence(kind, raw, sq)
+    fb_menu_special = (
+        kind == "special"
+        and source in ("facebook", "facebook_search")
+        and bool(full_text)
+        and is_specials_post(full_text)
+    )
+    gate_b_ok, effective, gate_b_reason = _gate_b_confidence(
+        kind, raw, sq, fb_menu_special=fb_menu_special
+    )
     if not gate_b_ok:
         return GatedRow(
             kind=kind,
