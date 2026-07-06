@@ -8,7 +8,49 @@ import json
 from board_render import _SECTION_META, _format_observed
 
 
-def _html_price_row(item: dict, *, section_key: str) -> str:
+def _group_items_by_market(items: list[dict]) -> list[tuple[str, list[dict]]]:
+    """Preserve item order; cluster consecutive rows under each market."""
+    groups: list[tuple[str, list[dict]]] = []
+    index_by_market: dict[str, int] = {}
+    for item in items:
+        market_key = item.get("market") or item.get("market_short") or ""
+        if market_key in index_by_market:
+            groups[index_by_market[market_key]][1].append(item)
+        else:
+            index_by_market[market_key] = len(groups)
+            groups.append((market_key, [item]))
+    return groups
+
+
+def _item_label_without_market(item: dict, *, section_key: str) -> str:
+    """Row title when a market sign heading is shown above the group."""
+    if section_key == "special":
+        row_primary = str(item.get("row_primary") or "")
+        market_short = str(item.get("market_short") or "")
+        sep = " — "
+        if sep in row_primary and row_primary.startswith(market_short + sep):
+            return row_primary[len(market_short) + len(sep) :]
+        return str(item.get("label") or row_primary)
+    if section_key == "lobster" and item.get("is_consolidated"):
+        return str(item.get("row_secondary") or item.get("label") or "Lobster")
+    label = str(item.get("label") or "")
+    if section_key == "oyster" and label.lower() == "oysters":
+        return "per dozen"
+    return label
+
+
+def _html_market_sign(market_short: str, *, section_key: str, tilt: float) -> str:
+    name = html.escape(market_short)
+    return (
+        f'<div class="market-sign section-{section_key}" style="--sign-tilt: {tilt:.1f}deg">'
+        f'<span class="market-sign-frame">'
+        f'<span class="market-sign-board">{name}</span>'
+        f"</span>"
+        f"</div>"
+    )
+
+
+def _html_price_row(item: dict, *, section_key: str, grouped_by_market: bool = False) -> str:
     market = html.escape(item.get("market_short", ""))
     label = html.escape(item.get("label", ""))
     raw_subtext = item.get("subtext", "")
@@ -17,7 +59,18 @@ def _html_price_row(item: dict, *, section_key: str) -> str:
     unavailable = item.get("is_unavailable")
     wide_price = amount.startswith("from ") or ("–" in amount and len(amount) > 10)
 
-    if section_key == "lobster":
+    if grouped_by_market:
+        left_primary = html.escape(_item_label_without_market(item, section_key=section_key))
+        if section_key == "lobster" and item.get("is_consolidated"):
+            left_secondary = ""
+            subtext = ""
+        elif section_key == "special":
+            left_secondary = ""
+            subtext = html.escape(raw_subtext)
+        else:
+            left_secondary = ""
+            subtext = html.escape(raw_subtext)
+    elif section_key == "lobster":
         if item.get("is_consolidated"):
             left_primary = html.escape(item.get("row_primary", item.get("market_short", "")))
             left_secondary = html.escape(item.get("row_secondary") or raw_subtext or "")
@@ -83,6 +136,28 @@ def _html_blocked_details(coverage: list[dict]) -> str:
     return f'<ul class="blocked-list">{"".join(rows)}</ul>'
 
 
+def _html_section_body(items: list[dict], *, section_key: str) -> str:
+    if not items:
+        return '<p class="section-empty">Nothing on the board yet.</p>'
+
+    groups = _group_items_by_market(items)
+    blocks: list[str] = []
+    for _market_key, group_items in groups:
+        market_short = group_items[0].get("market_short", "")
+        tilt = float(group_items[0].get("tilt", -1.5))
+        rows = [
+            _html_price_row(item, section_key=section_key, grouped_by_market=True)
+            for item in group_items
+        ]
+        blocks.append(
+            f'<div class="market-group">'
+            f"{_html_market_sign(market_short, section_key=section_key, tilt=tilt)}"
+            f'<ul class="price-list">{"".join(rows)}</ul>'
+            f"</div>"
+        )
+    return f'<div class="market-groups">{"".join(blocks)}</div>'
+
+
 def render_chalk_html(board: dict) -> str:
     is_demo = board.get("is_demo", False)
     demo_banner = (
@@ -93,12 +168,7 @@ def render_chalk_html(board: dict) -> str:
     for section_key in ("lobster", "oyster", "special"):
         emoji, heading, _ = _SECTION_META[section_key]
         items = board["sections"].get(section_key, [])
-        rows = [_html_price_row(item, section_key=section_key) for item in items]
-        body = (
-            f'<ul class="price-list">{"".join(rows)}</ul>'
-            if rows
-            else '<p class="section-empty">Nothing on the board yet.</p>'
-        )
+        body = _html_section_body(items, section_key=section_key)
         sections_html.append(
             f'<section class="board-section section-{section_key}">'
             f'<h2 class="section-heading">{emoji} {html.escape(heading)}</h2>'
@@ -242,6 +312,67 @@ def render_chalk_html(board: dict) -> str:
     .section-lobster .section-heading {{ color: var(--lobster); }}
     .section-oyster .section-heading {{ color: var(--ocean); }}
     .section-special .section-heading {{ color: var(--gold); }}
+    .market-groups {{
+      display: flex;
+      flex-direction: column;
+      gap: 1.35rem;
+    }}
+    .market-group {{
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }}
+    .market-sign {{
+      display: flex;
+      justify-content: center;
+      margin: 0.15rem 0 0.35rem;
+      padding: 0 0.25rem;
+    }}
+    .market-sign-frame {{
+      display: inline-block;
+      transform: rotate(var(--sign-tilt, -1.5deg));
+      background: linear-gradient(165deg, #7a5628 0%, #5c3f18 45%, var(--frame) 100%);
+      padding: 5px 7px;
+      border-radius: 5px;
+      box-shadow:
+        0 4px 10px rgba(0,0,0,.45),
+        inset 0 1px 0 rgba(255,255,255,.12),
+        inset 0 -1px 0 rgba(0,0,0,.25);
+    }}
+    .market-sign-board {{
+      display: block;
+      min-width: 7.5rem;
+      text-align: center;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.04) 0%, transparent 40%),
+        linear-gradient(180deg, var(--board-mid) 0%, var(--board-bg) 100%);
+      border: 2px solid #08100c;
+      border-radius: 3px;
+      padding: 0.3rem 1.1rem;
+      font-size: clamp(1.05rem, 4.2vw, 1.3rem);
+      font-weight: 700;
+      color: var(--chalk);
+      letter-spacing: 0.05em;
+      line-height: 1.2;
+      text-shadow: 0 1px 2px rgba(0,0,0,.35);
+      box-shadow: inset 0 2px 6px rgba(0,0,0,.28);
+    }}
+    .section-lobster .market-sign-board {{ color: var(--lobster); }}
+    .section-oyster .market-sign-board {{ color: var(--ocean); }}
+    .section-special .market-sign-board {{ color: var(--gold); }}
+    .market-group .price-list {{
+      padding: 0 0.15rem;
+    }}
+    .market-group .price-row:first-child {{
+      padding-top: 0.55rem;
+    }}
+    .market-group .price-row:last-child {{
+      border-bottom: none;
+    }}
+    .market-group:not(:last-child) {{
+      padding-bottom: 0.35rem;
+      border-bottom: 1px dashed rgba(242,234,216,.06);
+    }}
     .price-list {{
       list-style: none;
       display: flex;
@@ -441,6 +572,15 @@ def render_chalk_html(board: dict) -> str:
       }}
       .price-row.is-consolidated .row-secondary {{
         font-size: 0.95rem;
+      }}
+      .market-sign-frame {{
+        max-width: calc(100% - 1rem);
+      }}
+      .market-sign-board {{
+        min-width: 0;
+        max-width: 100%;
+        padding: 0.28rem 0.85rem;
+        font-size: 1.05rem;
       }}
     }}
   </style>
