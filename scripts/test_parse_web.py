@@ -38,6 +38,10 @@ HARBOR_FISH_OYSTER_FIXTURE = """
 <h2 class="entry-title de_title_module product_title">XL Kumamoto Oysters</h2>
 <span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">$</span>32.00</span>
 </li>
+<li class="product">
+<h2 class="entry-title de_title_module product_title">Fresh Shucked Oysters in 1 Lb pkg.</h2>
+<span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">$</span>21.99</span>
+</li>
 </ul>
 """
 
@@ -63,7 +67,7 @@ SAMPLES = [
         [
             ("lobster_tier", "1.25lb_hard_shell", 18.00, "lb"),
             ("special", "lobster_roll", 24.99, "ea"),
-            ("special", "halibut", 18.99, "lb"),
+            ("special", "halibut_per_lb", 18.99, "lb"),
         ],
     ),
     (
@@ -71,6 +75,7 @@ SAMPLES = [
         [
             ("oyster_tier", "select", 24.00, "doz"),
             ("oyster_tier", "xl", 32.00, "doz"),
+            ("oyster_tier", "shucked", 21.99, "ea"),
         ],
     ),
     (
@@ -80,6 +85,34 @@ SAMPLES = [
         ],
     ),
 ]
+
+
+def test_harbor_fish_unique_special_keys() -> None:
+    fixture = """
+<ul class="products">
+<li class="product">
+<h2 class="entry-title product_title">Fresh North Atlantic Salmon Fillet</h2>
+<span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">$</span>15.99</span>
+</li>
+<li class="product">
+<h2 class="entry-title product_title">Fresh Wild Pacific Salmon Fillet</h2>
+<span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">$</span>16.99</span>
+<span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">$</span>32.99</span>
+</li>
+<li class="product">
+<h2 class="entry-title product_title">Fresh Yellowfin Tuna</h2>
+<span class="woocommerce-Price-amount amount"><span class="woocommerce-Price-currencySymbol">$</span>14.99</span>
+</li>
+</ul>
+"""
+    rows = parse_web_catalog_rows(fixture)
+    specials = [r for r in rows if r.kind == "special"]
+    keys = {r.key for r in specials}
+    assert keys == {
+        "north_atlantic_salmon_fillet",
+        "wild_pacific_salmon_fillet",
+        "yellowfin_tuna",
+    }
 
 
 def test_harbor_range_metadata() -> None:

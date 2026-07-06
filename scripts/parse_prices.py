@@ -45,12 +45,25 @@ _OYSTER_TIER_KEYWORDS: list[tuple[str, str]] = [
     (r"\b(?:standards?)\b", "standard"),
     (r"\b(?:pints?)\b", "pint"),
     (
-        r"\b(?:wellfleet|wells|belon|blue\s*points?|kumamotos?|malaquite|beausoleils?|moonstones?|pearl\s*points?|savage\s*blondes?)\b",
+        r"\b(?:wellfleet|wells|belon|blue\s*points?|kumamotos?|malaquite|beausoleils?|moonstones?|pearl\s*points?|savage\s*blondes?|glidden\s*points?)\b",
         "named_variety",
     ),
     (r"\b(?:small|petite|pearl)\b", "small"),
     (r"\b(?:medium)\b", "medium"),
     (r"\b(?:large)\b", "large"),
+]
+
+_NAMED_OYSTER_LABELS: list[tuple[str, str]] = [
+    (r"\bwellfleet\b", "Wellfleet"),
+    (r"\bblue\s*points?\b", "Blue Point"),
+    (r"\bkumamotos?\b", "Kumamoto"),
+    (r"\bbeausoleils?\b", "Beausoleil"),
+    (r"\bglidden\s*points?\b", "Glidden Point"),
+    (r"\bmoonstones?\b", "Moonstone"),
+    (r"\bpearl\s*points?\b", "Pearl Point"),
+    (r"\bsavage\s*blondes?\b", "Savage Blonde"),
+    (r"\bbelon\b", "Belon"),
+    (r"\bmalaquite\b", "Malaquite"),
 ]
 
 _PRICE_LB_RE = re.compile(
@@ -223,17 +236,42 @@ def _clause_of(text: str, pos: int) -> str:
     semi = text.rfind(";", 0, pos)
     dot = text.rfind(". ", 0, pos)
     newline = text.rfind("\n", 0, pos)
+    bullet = text.rfind("•", 0, pos)
+    emdash = max(text.rfind("—", 0, pos), text.rfind("–", 0, pos))
 
     double_nl_start = -1
     for m in re.finditer(r"\n[\s\u2063]*\n", text[:pos]):
         double_nl_start = m.end()
 
-    start = max(comma, semi, dot, double_nl_start, and_start, newline)
+    list_line_start = -1
+    for m in re.finditer(r"\n\s*[-–—]\s*", text[:pos]):
+        list_line_start = m.end()
+
+    start = max(
+        comma, semi, dot, double_nl_start, and_start, newline, bullet, emdash, list_line_start
+    )
     if start >= 0:
-        if start == and_start or start == double_nl_start:
+        if start in {and_start, double_nl_start, list_line_start}:
             return text[start:pos]
+        if start == bullet:
+            return text[start + 1 : pos]
         return text[start + 1 : pos]
     return text[max(0, pos - 60) : pos]
+
+
+def oyster_variety_label(text: str) -> str | None:
+    """Human-readable oyster variety from a catalog title or post snippet."""
+    if not text:
+        return None
+    for pattern, label in _NAMED_OYSTER_LABELS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return label
+    return None
+
+
+def _clause_has_oyster(text: str, price_pos: int) -> bool:
+    clause = _clause_of(text, price_pos).lower()
+    return "oyster" in clause or "oysters" in clause
 
 
 def _shell_context_at(text: str, price_pos: int) -> str | None:
@@ -530,6 +568,16 @@ def parse_post(text: str) -> list[ParsedRow]:
         snippet = text[max(0, m.start() - 50) : m.end() + 20].strip()[:120]
         rows.append(("oyster_tier", grade, price, "doz", snippet))
 
+    for m in _PRICE_EA_RE.finditer(text):
+        if not _clause_has_oyster(text, m.start()):
+            continue
+        price = float(m.group(1))
+        clause = _clause_of(text, m.start())
+        grade = _find_oyster_grade_in_clause(clause)
+        key = grade or "oyster"
+        snippet = text[max(0, m.start() - 50) : m.end() + 30].strip()[:120]
+        rows.append(("oyster_tier", key, price, "ea", snippet))
+
     tier_snippets = {r[4] for r in rows if r[0] == "lobster_tier"}
     for m in _PRICE_LB_RE.finditer(text):
         price = float(m.group(1))
@@ -551,6 +599,8 @@ def parse_post(text: str) -> list[ParsedRow]:
             rows.append(("special", key, price, "lb", snippet))
 
     for m in _PRICE_EA_RE.finditer(text):
+        if _clause_has_oyster(text, m.start()):
+            continue
         price = float(m.group(1))
         kw = _find_special_kw_in_clause(text, m.start())
         if not kw:

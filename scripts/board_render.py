@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from market_names import short_market
 from markets import MARKETS
+from parse_prices import oyster_variety_label
 from state import DATA_DIR, read_json, read_jsonl
 
 _LOBSTER_SIZE_ORDER = {
@@ -140,6 +141,29 @@ def label_for_row(key: str, snippet: str = "") -> str:
     return label
 
 
+def _oyster_display_label(key: str, snippet: str = "", catalog_title: str = "") -> str:
+    source = catalog_title or snippet
+    named = oyster_variety_label(source)
+    if named:
+        grade = label_for(key) if key not in {"oyster", "named_variety"} else None
+        if grade and grade not in {"Oysters", "Named Variety"}:
+            return f"{named} {grade}"
+        return named
+    if key == "named_variety":
+        cleaned = re.sub(r"\b(?:oysters?|per\s+dozen|doz|dz)\b", "", source, flags=re.I)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -–—•")
+        if cleaned and len(cleaned) > 2:
+            return cleaned[:48]
+    if key == "oyster" and catalog_title:
+        cleaned = re.sub(r"\s+", " ", catalog_title).strip()
+        if cleaned and "oyster" in cleaned.lower():
+            return cleaned[:48]
+    if key == "shucked" and catalog_title:
+        return "Shucked (1 lb pkg)"
+    label = label_for(key)
+    return label if label != "Oysters" or not source else "Oysters"
+
+
 def market_roster() -> list[dict]:
     """Return every configured market for demo/live board display."""
     return [
@@ -258,9 +282,105 @@ def _is_clean_special_row(row: dict) -> bool:
         return False
     if snippet.rstrip().endswith(","):
         return False
-    # Clipped prior item (e.g. "50 /lb." before a bullet list) — digits before /lb
-    # must not immediately follow $ (legitimate "$18.99/lb" snippets stay clean).
+    # Clipped prior item (e.g. "50 /lb." before a bullet list).
     if re.search(r"(?:^|[\s•])(?:\d+(?:\.\d+)?)\s*/\s*lb\.?", snippet, re.I):
+        return False
+    if re.search(r"\b(mediums?|large|jumbo|chix)\s*\$", snippet, re.I):
+        return False
+    if re.search(r"lobsters?\s+starting\s+at", snippet, re.I):
+        return False
+    return True
+
+
+_SALVAGE_SPECIES = (
+    "halibut",
+    "haddock",
+    "salmon",
+    "tuna",
+    "cod",
+    "scallop",
+    "clam",
+    "crab",
+    "char",
+    "sole",
+    "flounder",
+    "hake",
+    "swordfish",
+    "shrimp",
+    "bluefish",
+    "monkfish",
+    "mussel",
+    "oyster",
+    "lobster roll",
+    "chowder",
+    "bisque",
+)
+
+
+def _salvage_mashup_special_rows(row: dict) -> list[dict]:
+    """Split multi-line FB menu snippets into one row per clean price line."""
+    if row.get("kind") != "special" or _is_clean_special_row(row):
+        return [row]
+    salvaged: list[dict] = []
+    for line in re.split(r"[\n\r]+", str(row.get("snippet", ""))):
+        clean_line = re.sub(r"^[•·🐟🐚🦞🦪\s]+", "", line).strip()
+        if not clean_line:
+            continue
+        if re.search(r"\b(obster|ddock|esh cod)\b", clean_line, re.I):
+            continue
+        line_l = clean_line.lower()
+        if not any(kw in line_l for kw in _SALVAGE_SPECIES):
+            continue
+        price_match = re.search(
+            r"\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:/(?:lb|doz|ea)|(?:lb|ea)\b|each)",
+            clean_line,
+            re.I,
+        )
+        if not price_match:
+            continue
+        parsed_price = float(price_match.group(1))
+        if parsed_price < 5.0 or parsed_price > 75.0:
+            continue
+        labelish = re.sub(r"\$[\d.,]+.*$", "", clean_line, flags=re.I).strip()
+        if len(labelish) < 4 or not re.search(r"[a-z]{3,}", labelish, re.I):
+            continue
+        child = {**row, "snippet": clean_line, "price": parsed_price}
+        if child.get("display_price") is not None:
+            child["display_price"] = parsed_price
+        if not _is_clean_special_row(child):
+            continue
+        label = _special_display_label(child, child.get("key", ""))
+        if _is_publishable_special_label(label):
+            salvaged.append(child)
+    return salvaged
+
+
+def _expand_special_rows(rows: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for row in rows:
+        if row.get("kind") == "special":
+            out.extend(_salvage_mashup_special_rows(row))
+        else:
+            out.append(row)
+    return out
+
+
+def _is_stale_special(row: dict) -> bool:
+    if row.get("kind") != "special":
+        return False
+    dt = _parse_ts(str(row.get("observed_at", "")))
+    if dt is None:
+        return row.get("source") in ("google_cse", "duckduckgo", "facebook_search")
+    age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
+    return age > _SPECIAL_MAX_AGE
+
+
+def _is_publishable_special_label(label: str) -> bool:
+    if not label or len(label) < 4:
+        return False
+    if label.rstrip().endswith("$"):
+        return False
+    if re.search(r"\b(obster|ddock|esh cod)\b", label, re.I):
         return False
     return True
 
@@ -271,12 +391,15 @@ def _special_display_label(row: dict, fallback: str) -> str:
         title = str(row["catalog_title"])
     else:
         title = str(row.get("snippet") or fallback)
-    title = title.split("(")[0].strip()
+    title = re.sub(r"\s*\(\s*\d[^)]*\)", "", title).strip()
     title = re.sub(r"^[•·\-]\s*", "", title).strip()
     colon_match = re.match(r"^(.+?):\s*\$", title)
     if colon_match:
         title = colon_match.group(1).strip()
     title = re.sub(r"\s*\$[\d.,]+(?:\s*(?:/|per)\s*\w+)?\s*$", "", title, flags=re.I).strip()
+    title = re.sub(r"\s*\d+(?:\.\d+)?\s*lb\.?\s*$", "", title, flags=re.I).strip()
+    title = re.sub(r"\s*\$\s*$", "", title).strip()
+    title = re.sub(r"\s+(?:are|is)\s*$", "", title, flags=re.I).strip()
     if title.lower().startswith("fresh "):
         title = title[6:].strip()
     return title or fallback
@@ -464,7 +587,6 @@ def _row_identity(row: dict) -> tuple:
         return (
             row.get("market", ""),
             kind,
-            row.get("key", ""),
             str(title).strip().lower()[:80],
         )
     base = (
@@ -475,6 +597,9 @@ def _row_identity(row: dict) -> tuple:
     # FB posts emit many lobster_tier rows per size under the same key — keep each price.
     if kind == "lobster_tier":
         return base + (float(row.get("price", 0)),)
+    if kind == "oyster_tier":
+        title = row.get("catalog_title") or row.get("snippet") or ""
+        return base + (str(title).strip().lower()[:60], float(row.get("price", 0)))
     return base
 
 
@@ -714,9 +839,11 @@ def _collapse_lobster_headlines(items: list[dict]) -> list[dict]:
 
 
 _MAX_SECTION_ITEMS = 4
+_MAX_OYSTER_ITEMS = 16
 _MAX_LOBSTER_HEADLINES = 9
 _MAX_SPECIALS_PER_MARKET = 10
 _MAX_SPECIALS_TOTAL = 36
+_SPECIAL_MAX_AGE = timedelta(days=7)
 
 _BLOCKER_LABELS: dict[str, str] = {
     "no_posts_from_facebook": "Facebook feed unavailable",
@@ -761,6 +888,13 @@ def _special_item_rank(item: dict) -> tuple:
     )
 
 
+def _special_freshness_rank(item: dict) -> tuple:
+    return (
+        item.get("observed_at", ""),
+        _special_item_rank(item),
+    )
+
+
 def _cap_specials_by_market(items: list[dict]) -> list[dict]:
     """Keep up to N specials per market, max total — preserve every market with data."""
     if not items:
@@ -769,7 +903,7 @@ def _cap_specials_by_market(items: list[dict]) -> list[dict]:
     for item in items:
         by_market.setdefault(item.get("market", ""), []).append(item)
     for market_items in by_market.values():
-        market_items.sort(key=_special_item_rank)
+        market_items.sort(key=_special_freshness_rank, reverse=True)
 
     market_order = [m["name"] for m in MARKETS if m["name"] in by_market]
     for name in by_market:
@@ -841,14 +975,18 @@ def load_board_rows(
     prices_rows: list[dict] | None = None,
 ) -> list[dict]:
     rows = prices_rows if prices_rows is not None else read_jsonl("prices.jsonl")
+    rows = _expand_special_rows(rows)
     filtered: list[dict] = []
     for r in rows:
         if r.get("gate_passed") is False:
             continue
         if _is_test_row(r):
             continue
-        if r.get("kind") == "special" and not _is_clean_special_row(r):
-            continue
+        if r.get("kind") == "special":
+            if not _is_clean_special_row(r):
+                continue
+            if _is_stale_special(r):
+                continue
         conf = int(r.get("confidence", 0))
         if conf < min_confidence and r.get("gate_passed") is not True:
             continue
@@ -1003,13 +1141,23 @@ def build_board(
         else:
             continue
         label = label_for_row(r.get("key", "?"), r.get("snippet", ""))
+        if bucket == "oyster":
+            label = _oyster_display_label(
+                r.get("key", "?"),
+                r.get("snippet", ""),
+                r.get("catalog_title", "") or "",
+            )
+        special_label = label
+        if bucket == "special":
+            special_label = _special_display_label(r, label)
+            if not _is_publishable_special_label(special_label):
+                continue
         display_price, display_unit, display_high, price_is_range = _display_values_from_row(r)
         if kind == "special":
             title = r.get("catalog_title") or r.get("snippet") or label
             dedupe_key = (
                 market_name,
                 kind,
-                r.get("key", ""),
                 str(title).strip().lower()[:80],
             )
         else:
@@ -1019,6 +1167,14 @@ def build_board(
                 r.get("key", ""),
                 r.get("shell_tier", ""),
             )
+            if kind == "oyster_tier":
+                title = r.get("catalog_title") or r.get("snippet") or ""
+                dedupe_key = (
+                    market_name,
+                    kind,
+                    r.get("key", ""),
+                    str(title).strip().lower()[:60],
+                )
         if dedupe_key in seen_items:
             continue
         seen_items.add(dedupe_key)
@@ -1032,13 +1188,17 @@ def build_board(
             board_glance=bucket == "special",
         )
         provenance = _provenance_note(r)
-        special_label = label
-        if bucket == "special":
-            special_label = _special_display_label(r, label)
+        observed_display = _format_observed(r.get("observed_at", ""))
+        subtext = ""
+        if bucket == "special" and observed_display and observed_display != "—":
+            source_tag = "web" if r.get("source") == "web" else "FB"
+            subtext = f"{observed_display} · {source_tag}"
         item = {
             "label": label,
             "row_primary": (
-                f"{short_market(market_name)} — {special_label}" if bucket == "special" else label
+                f"{short_market(market_name)} — {special_label}"
+                if bucket in {"special", "oyster"}
+                else label
             ),
             "key": r.get("key", ""),
             "price": float(r.get("price", 0)),
@@ -1056,7 +1216,7 @@ def build_board(
             "unit_label": unit_label,
             "market": market_name,
             "market_short": short_market(market_name),
-            "subtext": "",
+            "subtext": subtext,
             "confidence": int(r.get("confidence", 0)),
             "observed_at": r.get("observed_at", ""),
             "observed_display": _format_observed(r.get("observed_at", "")),
@@ -1083,7 +1243,7 @@ def build_board(
     sections["lobster"] = _collapse_lobster_headlines(sections["lobster"])
     lobster_board_markets = {item.get("market", "") for item in sections["lobster"]}
     sections["oyster"].sort(key=lambda x: (x.get("sort_price", x["price"]), x["market_short"]))
-    sections["oyster"] = sections["oyster"][:_MAX_SECTION_ITEMS]
+    sections["oyster"] = sections["oyster"][:_MAX_OYSTER_ITEMS]
     oyster_board_markets = {item.get("market", "") for item in sections["oyster"]}
     sections["special"] = _cap_specials_by_market(sections["special"])
 
@@ -1236,10 +1396,14 @@ def render_terminal(board: dict, *, width: int = 62) -> str:
             cap = (
                 8
                 if section_key == "lobster"
-                else (_MAX_SPECIALS_TOTAL if section_key == "special" else _MAX_SECTION_ITEMS)
+                else (
+                    _MAX_SPECIALS_TOTAL
+                    if section_key == "special"
+                    else _MAX_OYSTER_ITEMS if section_key == "oyster" else _MAX_SECTION_ITEMS
+                )
             )
             for item in items[:cap]:
-                if section_key == "special":
+                if section_key in {"special", "oyster"}:
                     left = item.get("row_primary") or f"{item['market_short']} — {item['label']}"
                 else:
                     left = f"{item['market_short']} · {item['label']}"

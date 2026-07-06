@@ -70,6 +70,18 @@ SAMPLES = [
         ],
     ),
     (
+        "🦪All Maine Oysters $1.50 each",
+        [
+            ("oyster_tier", "oyster", 1.5, "ea"),
+        ],
+    ),
+    (
+        "• Maine Oysters in the shell: $1.65 each.",
+        [
+            ("oyster_tier", "oyster", 1.65, "ea"),
+        ],
+    ),
+    (
         "Farm fresh eggs $6/doz, bread $4",
         [],
     ),

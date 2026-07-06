@@ -118,6 +118,10 @@ def _strip_tags(s: str) -> str:
     return re.sub(r"<[^>]+>", "", s).strip()
 
 
+def _slug_key(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")[:80]
+
+
 def _detect_unit(title: str) -> str:
     t = title.lower()
     if any(x in t for x in ("doz", "dozen", "/dz")):
@@ -146,7 +150,15 @@ def _lobster_weight_from_title(title: str) -> float | None:
     return None
 
 
-def _canonical_web_special_key(title: str) -> str:
+_ICONIC_SPECIAL_KEYS: dict[str, str] = {
+    "lobster roll": "lobster_roll",
+    "chowder": "chowder",
+    "bisque": "bisque",
+}
+
+
+def _species_key_from_title(title: str) -> str | None:
+    """Broad species bucket for price bands — not used as the catalog row key."""
     t = title.lower()
     if "lobster roll" in t:
         return "lobster_roll"
@@ -184,7 +196,22 @@ def _canonical_web_special_key(title: str) -> str:
         return "fish_medley"
     if "bisque" in t:
         return "bisque"
-    return re.sub(r"[^a-z0-9]+", "_", t).strip("_")[:80]
+    if "smoked" in t:
+        return "smoked"
+    return None
+
+
+def _canonical_web_special_key(title: str) -> str:
+    """Unique per catalog line — keeps salmon/tuna varieties distinct on the board."""
+    t = title.lower()
+    for phrase, key in _ICONIC_SPECIAL_KEYS.items():
+        if phrase in t:
+            return key
+    slug = re.sub(r"^fresh\s+", "", t)
+    slug = re.sub(r"[^a-z0-9]+", "_", slug).strip("_")[:80]
+    if slug:
+        return slug
+    return _species_key_from_title(title) or "special"
 
 
 def _parse_price_values(candidate_prices: list) -> list[float]:
@@ -357,14 +384,24 @@ def parse_web_catalog_rows(html: str) -> List[WebCatalogRow]:
         unit = _detect_unit(title)
 
         if "oyster" in title_l:
-            from parse_prices import _find_oyster_grade_in_clause  # type: ignore
+            from parse_prices import _find_oyster_grade_in_clause, oyster_variety_label  # type: ignore
 
             grade = _find_oyster_grade_in_clause(title)
-            if "shuck" in title_l or "/lb" in title_l or "1 lb" in title_l:
+            named = oyster_variety_label(title)
+            if grade:
+                oyster_tier = grade
+            elif named:
+                oyster_tier = _slug_key(named)
+            else:
+                oyster_tier = "oyster"
+            if "shuck" in title_l and ("pkg" in title_l or "package" in title_l):
+                oyster_tier = grade or "shucked"
+                unit = "ea"
+            elif "shuck" in title_l or "/lb" in title_l:
                 oyster_tier = grade or "shucked"
                 unit = "lb"
             else:
-                oyster_tier = grade or "oyster"
+                unit = _detect_unit(title)
             if is_range:
                 rows.append(
                     WebCatalogRow(

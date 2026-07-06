@@ -95,10 +95,46 @@ def test_structured_catalog_lobster_passes_without_unit_in_title():
     print("  ✓ structured catalog lobster passes without explicit /lb")
 
 
+def test_fb_menu_specials_confidence_boost():
+    from quality_gate import gate_rows
+
+    text = "Today's catch! Fresh halibut $18.99/lb and haddock $9.99/lb"
+    rows = [("special", "halibut", 18.99, "lb", "Fresh halibut $18.99/lb")]
+    passed, _ = gate_rows(
+        rows,
+        source="facebook_search",
+        observed_at=FRESH_TS,
+        full_text=text,
+        parse_meta=[{"price_pos": 13, "bare_price": False}],
+    )
+    assert len(passed) == 1
+    assert passed[0].raw_confidence >= 80
+    print("  ✓ FB menu specials post confidence boost")
+
+
 def test_is_specials_post():
     assert is_specials_post("halibut $18.99/lb") is True
     assert is_specials_post("chicks $8.75/lb") is False
     print("  ✓ is_specials_post AC4b logic")
+
+
+def test_oyster_each_and_shucked_pkg_bands():
+    each = score_row(
+        ("oyster_tier", "oyster", 1.65, "ea", "Maine Oysters $1.65 each"),
+        source="facebook",
+        observed_at=FRESH_TS,
+        full_text="Maine Oysters $1.65 each",
+    )
+    assert each.gate_passed, each.reject_reason
+    shucked = score_row(
+        ("oyster_tier", "shucked", 21.99, "ea", "Fresh Shucked Oysters in 1 Lb pkg."),
+        source="web",
+        observed_at=FRESH_TS,
+        full_text="Fresh Shucked Oysters in 1 Lb pkg.",
+        structured=True,
+    )
+    assert shucked.gate_passed, shucked.reject_reason
+    print("  ✓ oyster each + shucked pkg bands")
 
 
 def main() -> int:
@@ -110,7 +146,9 @@ def main() -> int:
         test_lobster_tier_passes_at_60,
         test_gate_quarantines_implausible_fb_search_lobster,
         test_structured_catalog_lobster_passes_without_unit_in_title,
+        test_fb_menu_specials_confidence_boost,
         test_is_specials_post,
+        test_oyster_each_and_shucked_pkg_bands,
     ]
     failures = 0
     for t in tests:

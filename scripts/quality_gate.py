@@ -41,6 +41,8 @@ _PRICE_BANDS: dict[str, tuple[float, float]] = {
     "lobster_tier": (4.0, 35.0),
     "oyster_tier": (10.0, 50.0),
 }
+_OYSTER_EACH_BAND = (0.75, 5.00)
+_OYSTER_SHUCKED_PKG_BAND = (12.0, 40.0)
 
 # Minimum credible $/lb for FB/search lobster tiers (2026 Maine retail).
 LOBSTER_TIER_FLOORS: dict[str, float] = {
@@ -98,6 +100,8 @@ CANONICAL_SPECIAL_KEYS = {
     "fish_medley",
 }
 
+FB_MENU_SPECIALS_CONFIDENCE_BOOST = 15
+
 
 @dataclass
 class GatedRow:
@@ -151,6 +155,22 @@ def source_quality_score(source: str) -> float:
 
 def min_confidence_for_kind(kind: str) -> int:
     return SPECIALS_CONFIDENCE_THRESHOLD if kind == "special" else TIER_CONFIDENCE_THRESHOLD
+
+
+def special_band_key(key: str) -> str:
+    """Map title-slug catalog keys (e.g. wild_pacific_salmon_fillet) to species bands."""
+    if key in _SPECIAL_BANDS or key in CANONICAL_SPECIAL_KEYS:
+        return key
+    key_l = key.lower()
+    for species in sorted(CANONICAL_SPECIAL_KEYS, key=len, reverse=True):
+        if species in key_l:
+            return species
+    return key
+
+
+def special_has_canonical_key(key: str) -> bool:
+    band = special_band_key(key)
+    return band in CANONICAL_SPECIAL_KEYS
 
 
 def min_confidence_for_alert(kind: str) -> int:
@@ -237,13 +257,21 @@ def _compute_raw_confidence(
         confidence += 10
     if structured:
         confidence += 15
-        if kind == "special" and key in CANONICAL_SPECIAL_KEYS:
+        if kind == "special" and special_has_canonical_key(key):
             confidence += 20
+
+    if (
+        kind == "special"
+        and full_text
+        and source in ("facebook", "facebook_search")
+        and is_specials_post(full_text)
+    ):
+        confidence += FB_MENU_SPECIALS_CONFIDENCE_BOOST
 
     if bare_price:
         confidence -= 30
 
-    if kind == "special" and key not in CANONICAL_SPECIAL_KEYS and len(key) > 30:
+    if kind == "special" and not special_has_canonical_key(key) and len(key) > 30:
         confidence -= 20
 
     return max(0, min(100, confidence))
@@ -275,6 +303,14 @@ def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, 
         lo, hi = _PRICE_BANDS["oyster_tier"]
         if unit == "doz" and lo <= price <= hi:
             return True, None
+        if unit == "ea":
+            if key == "shucked" or "shuck" in key:
+                slo, shi = _OYSTER_SHUCKED_PKG_BAND
+                if slo <= price <= shi:
+                    return True, None
+            if _OYSTER_EACH_BAND[0] <= price <= _OYSTER_EACH_BAND[1]:
+                return True, None
+            return False, f"gate_c:price_out_of_band:{price}"
         if unit == "lb" and lo / 12 <= price <= hi / 12:
             return True, None
         return False, f"gate_c:price_out_of_band:{price}"
@@ -284,7 +320,11 @@ def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, 
         elif key in _SPECIAL_BANDS:
             lo, hi = _SPECIAL_BANDS[key]
         else:
-            lo, hi = _DEFAULT_SPECIAL_BAND
+            band_key = special_band_key(key)
+            if band_key in _SPECIAL_BANDS:
+                lo, hi = _SPECIAL_BANDS[band_key]
+            else:
+                lo, hi = _DEFAULT_SPECIAL_BAND
         if not (lo <= price <= hi):
             return False, f"gate_c:price_out_of_band:{price}"
         return True, None

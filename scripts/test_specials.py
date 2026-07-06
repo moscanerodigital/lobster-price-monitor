@@ -57,7 +57,7 @@ def test_harbor_fish_web_specials_gate():
     specials = [r for r in rows if r[0] == "special"]
     assert len(specials) == 3
     keys = {r[1] for r in specials}
-    assert keys == {"halibut", "haddock", "swordfish"}
+    assert keys == {"halibut_fillet", "medium_haddock_fillet", "swordfish_steaks"}
     meta = [{"structured": True} for _ in specials]
     passed, quarantined = gate_rows(
         specials,
@@ -72,9 +72,9 @@ def test_harbor_fish_web_specials_gate():
 def test_pine_tree_web_specials():
     rows = parse_web_catalog(PINE_TREE_SPECIALS_FIXTURE)
     specials = [(k, key, price, unit) for k, key, price, unit, _ in rows if k == "special"]
-    assert ("special", "haddock", 17.99, "lb") in specials
+    assert ("special", "medium_maine_haddock", 17.99, "lb") in specials
     assert ("special", "lobster_roll", 24.99, "ea") in specials
-    assert ("special", "arctic_char", 10.99, "lb") in specials
+    assert ("special", "oak_smoked_arctic_char", 10.99, "lb") in specials
 
 
 def test_fb_specials_post_parsing():
@@ -110,6 +110,34 @@ def test_special_display_label_strips_price_and_fresh_prefix():
     assert _special_display_label(row, "Halibut") == "halibut"
     catalog = {"catalog_title": "Fresh Medium Haddock Fillet", "key": "haddock"}
     assert _special_display_label(catalog, "Haddock") == "Medium Haddock Fillet"
+    tuna = {"catalog_title": "Fresh Bluefin Tuna (sushi-grade)", "key": "tuna"}
+    assert _special_display_label(tuna, "Tuna") == "Bluefin Tuna (sushi-grade)"
+
+
+def test_salvage_mashup_special_rows():
+    from board_render import _salvage_mashup_special_rows
+
+    sopo = {
+        "kind": "special",
+        "key": "haddock",
+        "price": 11.99,
+        "snippet": "50 /lb.\n• Gulf of Maine Haddock Fillet: $11.99 /lb.\n• Maine Crab Meat,",
+    }
+    lines = _salvage_mashup_special_rows(sopo)
+    assert len(lines) == 1
+    assert "Gulf of Maine Haddock" in lines[0]["snippet"]
+    assert lines[0]["price"] == 11.99
+
+    free_range = {
+        "kind": "special",
+        "key": "tuna",
+        "price": 14.99,
+        "snippet": "$14.99lb\n🐟Fresh Local bluefin Tuna loin $18.99lb\n🐚Fresh Scallops 23.",
+    }
+    fr_lines = _salvage_mashup_special_rows(free_range)
+    assert len(fr_lines) == 1
+    assert "bluefin Tuna" in fr_lines[0]["snippet"]
+    assert fr_lines[0]["price"] == 18.99
 
 
 def test_cap_specials_preserves_all_markets():
@@ -141,6 +169,7 @@ def main() -> int:
         test_is_clean_special_row_rejects_fb_mashup,
         test_is_clean_special_row_accepts_catalog_and_web_snippets,
         test_special_display_label_strips_price_and_fresh_prefix,
+        test_salvage_mashup_special_rows,
         test_cap_specials_preserves_all_markets,
     ]
     failures = 0
