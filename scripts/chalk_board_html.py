@@ -47,7 +47,7 @@ def _html_market_sign(market_short: str, *, section_key: str, tilt: float) -> st
         board_inner = (
             f'<span class="market-sign-board has-logo">'
             f'<img class="market-sign-logo" src="{logo_uri}" alt="{name}" '
-            f'width="42" height="42" decoding="async">'
+            f'width="88" height="88" decoding="async">'
             f"</span>"
         )
     else:
@@ -344,11 +344,15 @@ def render_chalk_html(board: dict) -> str:
       transform: rotate(var(--sign-tilt, -1.5deg));
       background: linear-gradient(165deg, #7a5628 0%, #5c3f18 45%, var(--frame) 100%);
       padding: 5px 7px;
-      border-radius: 5px;
+      border-radius: 6px;
       box-shadow:
         0 4px 10px rgba(0,0,0,.45),
         inset 0 1px 0 rgba(255,255,255,.12),
         inset 0 -1px 0 rgba(0,0,0,.25);
+    }}
+    .market-sign-frame:has(.has-logo) {{
+      padding: 7px 9px;
+      border-radius: 8px;
     }}
     .market-sign-board {{
       display: block;
@@ -373,16 +377,16 @@ def render_chalk_html(board: dict) -> str:
       align-items: center;
       justify-content: center;
       min-width: 0;
-      padding: 0.35rem 0.55rem;
+      padding: 0.5rem 0.7rem;
     }}
     .market-sign-logo {{
-      width: clamp(2rem, 5vw, 2.65rem);
-      height: clamp(2rem, 5vw, 2.65rem);
+      width: 4rem;
+      height: 4rem;
       border-radius: 50%;
       object-fit: cover;
       flex-shrink: 0;
-      border: 1px solid rgba(0,0,0,.3);
-      box-shadow: 0 1px 3px rgba(0,0,0,.25);
+      border: 2px solid rgba(0,0,0,.35);
+      box-shadow: 0 2px 6px rgba(0,0,0,.35);
     }}
     .section-lobster .market-sign-board {{ color: var(--lobster); }}
     .section-oyster .market-sign-board {{ color: var(--ocean); }}
@@ -569,6 +573,16 @@ def render_chalk_html(board: dict) -> str:
       .board {{
         padding: 1.5rem 1.35rem 1.25rem;
       }}
+      .market-sign-logo {{
+        width: 5rem;
+        height: 5rem;
+      }}
+      .market-sign-board.has-logo {{
+        padding: 0.55rem 0.8rem;
+      }}
+      .market-sign-frame:has(.has-logo) {{
+        padding: 8px 10px;
+      }}
       .board-body {{
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -599,6 +613,16 @@ def render_chalk_html(board: dict) -> str:
       .board-body {{
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1.25rem 1.75rem;
+      }}
+      .market-sign-logo {{
+        width: 5.75rem;
+        height: 5.75rem;
+      }}
+      .market-sign-board.has-logo {{
+        padding: 0.6rem 0.85rem;
+      }}
+      .market-sign-frame:has(.has-logo) {{
+        padding: 9px 11px;
       }}
       .section-special {{
         grid-column: auto;
@@ -661,11 +685,14 @@ def render_chalk_html(board: dict) -> str:
         font-size: 1.05rem;
       }}
       .market-sign-board.has-logo {{
-        padding: 0.3rem 0.45rem;
+        padding: 0.45rem 0.55rem;
       }}
       .market-sign-logo {{
-        width: 2rem;
-        height: 2rem;
+        width: 4rem;
+        height: 4rem;
+      }}
+      .market-sign-frame:has(.has-logo) {{
+        padding: 6px 8px;
       }}
     }}
   </style>
