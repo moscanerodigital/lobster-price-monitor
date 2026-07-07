@@ -167,6 +167,32 @@ def test_salvage_mashup_special_rows():
     assert "bluefin Tuna" in fr_lines[0]["snippet"]
     assert fr_lines[0]["price"] == 18.99
 
+    ancient_clams = {
+        "kind": "special",
+        "key": "clams",
+        "price": 7.99,
+        "unit": "lb",
+        "snippet": "er Meat (1lb Bags):\n\n$64.99/lb\n\nClams:\n\n$7.99/lb\n\nMussels (sold in 2",
+    }
+    ancient_lines = _salvage_mashup_special_rows(ancient_clams)
+    assert len(ancient_lines) == 1
+    assert ancient_lines[0]["price"] == 7.99
+    assert ancient_lines[0]["key"] == "clams"
+    assert _is_clean_special_row(ancient_lines[0])
+
+    swordfish_row = {
+        "kind": "special",
+        "key": "swordfish",
+        "price": 14.99,
+        "unit": "lb",
+        "snippet": "lways fresh swordfish loin!!!\n\n⚔️🐟 only $14.99/lb \n\nThis deal is whil",
+    }
+    sword_lines = _salvage_mashup_special_rows(swordfish_row)
+    assert len(sword_lines) == 1
+    assert sword_lines[0]["price"] == 14.99
+    assert sword_lines[0]["key"] == "swordfish"
+    assert _is_clean_special_row(sword_lines[0])
+
 
 def test_special_row_coherent_rejects_mislabeled_crab():
     from board_render import _special_row_coherent

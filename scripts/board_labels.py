@@ -125,13 +125,57 @@ def _is_clean_special_row(row: dict) -> bool:
     return True
 
 
+_SALVAGE_LINE_PREFIX = re.compile(
+    r"^[\s•·🐟🐚🦞🦪⚔️\U00002600-\U000027BF\U0001F300-\U0001FAFF]+"
+)
+
+
+def _strip_salvage_line_prefix(line: str) -> str:
+    return _SALVAGE_LINE_PREFIX.sub("", line).strip()
+
+
+def _line_has_price(text: str) -> bool:
+    return bool(re.search(r"\$\s*\d", text))
+
+
+def _line_has_species(text: str) -> bool:
+    text_l = text.lower()
+    return any(kw in text_l for kw in _SALVAGE_SPECIES)
+
+
+def _iter_salvage_lines(snippet: str) -> list[str]:
+    """Normalize FB menu snippets — join orphan prices to prior label/species lines."""
+    raw_lines = [ln.strip() for ln in re.split(r"[\n\r]+", str(snippet)) if ln.strip()]
+    merged: list[str] = []
+    species_pending: str | None = None
+
+    for line in raw_lines:
+        clean = _strip_salvage_line_prefix(line)
+        if not clean:
+            continue
+        has_price = _line_has_price(clean)
+
+        if not has_price:
+            label = clean.rstrip(":").strip()
+            if _line_has_species(label):
+                species_pending = label
+            continue
+
+        if not _line_has_species(clean) and species_pending:
+            clean = f"{species_pending}: {clean}"
+        species_pending = None
+        merged.append(clean)
+
+    return merged
+
+
 def _salvage_mashup_special_rows(row: dict) -> list[dict]:
     """Split multi-line FB menu snippets into one row per clean price line."""
     if row.get("kind") != "special" or _is_clean_special_row(row):
         return [row]
     salvaged: list[dict] = []
-    for line in re.split(r"[\n\r]+", str(row.get("snippet", ""))):
-        clean_line = re.sub(r"^[•·🐟🐚🦞🦪\s]+", "", line).strip()
+    for line in _iter_salvage_lines(str(row.get("snippet", ""))):
+        clean_line = _strip_salvage_line_prefix(line)
         if not clean_line:
             continue
         if re.search(r"\b(obster|ddock|esh cod)\b", clean_line, re.I):
