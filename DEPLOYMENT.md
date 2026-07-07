@@ -17,6 +17,21 @@ bash scripts/install.sh
 
 Creates `.venv` and installs `requirements.txt`.
 
+## Architecture (build pipeline)
+
+The board is **not** hand-edited in Cursor. The artifact chain is:
+
+```
+scrape_markets.py → data/prices.jsonl → board_render.build_board()
+  → chalk_board_html.render_chalk_html() → data/board.html → serve_board.py :8765
+```
+
+Each published `board.html` includes an HTML comment documenting `generated_at`, gated row count, and git commit. The footer timestamp and `(daily snapshot · updates after each scrape)` label reflect the last successful scrape, not a live feed.
+
+**Serve security:** `serve_board.py` uses Python's `SimpleHTTPRequestHandler` but only exposes `data/board.html` (and optional `/img/*` when `BOARD_EXTERNAL_LOGOS=1`). Requests for `prices.jsonl`, `quarantine.jsonl`, or any other path return **403**. The `Server: SimpleHTTP/0.6` header is expected from the stdlib wrapper.
+
+**Viewer refresh:** Responses send `Cache-Control: no-cache`. The HTML may include `<meta http-equiv="refresh" content="300">` (disable with `BOARD_AUTO_REFRESH=0`).
+
 ## Host deploy orchestrator (Gate D Wave 5)
 
 Unified entry point for production-host agents:
@@ -602,6 +617,64 @@ git pull
 # board.html is now in data/ — serve unit reads it automatically
 make status-host          # confirm scrape age + serve URL
 curl -sf http://127.0.0.1:8765/board.html | head -c 200
+```
+
+## Multi-host mirror (Hermes audit E-11)
+
+Production targets: **Mac mini**, **Chromebox**, and optionally this MacBook at `~/lobster-price-monitor`.
+
+### One-time SSH setup (per remote host)
+
+On the remote machine (console or Screen Sharing), add this MacBook's public key to `~/.ssh/authorized_keys`:
+
+```bash
+# On MacBook — copy pubkey:
+cat ~/.ssh/id_ed25519.pub
+```
+
+On **mac-mini** / **chromebox** (user `erik-darci`):
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo 'ssh-ed25519 AAAA... erik-darci@Eriks-MacBook-Pro.local' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Optional `~/.ssh/config` on MacBook:
+
+```
+Host mac-mini chromebox
+  User erik-darci
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+### Mirror / recover from MacBook
+
+```bash
+make mirror-host HOST=mac-mini
+make mirror-host HOST=chromebox
+```
+
+Runs `git pull --ff-only && make recover-host` on the remote.
+
+### Ops promotion (price-watch alerts — E-13)
+
+After schedulers are healthy on a host:
+
+```bash
+bash scripts/preflight_secrets.sh --require-telegram
+make promote-ops
+make verify-ops
+```
+
+Loads `com.erik.lobster-price-monitor.scrape.ops` with `LOBSTER_ALERTS=1`. Thresholds: `scripts/scrape_markets.py` `LOBSTER_TIER_THRESHOLDS` and `OYSTER_TIER_THRESHOLDS`. Roll back with `make demote-ops`.
+
+### Daily board archival (E-12)
+
+After each successful board publish, `scrape_markets.py` copies `data/board.html` → `data/archive/board-YYYY-MM-DD.html` and appends `data/archive/manifest.jsonl` (gitignored). Manual:
+
+```bash
+make archive-board
 ```
 
 If the serving host runs its own scrape scheduler, a local scrape will overwrite `board.html` on the next tick — that is expected and preferred once schedulers are healthy there. Until then, the git-pushed board is the handoff path.

@@ -178,6 +178,20 @@ ANCIENT_MARINER_MENU = (
 )
 
 
+def test_fb_oyster_per_each_prices() -> None:
+    """FB menu lines with per-oyster pricing (Two Tides / Free Range style)."""
+    text = (
+        "Oysters on the half shell:\n"
+        "Small $1.50 each\n"
+        "Medium $1.65 each\n"
+        "Large $3.00 each"
+    )
+    rows = parse_post(text)
+    oysters = [(key, p, u) for k, key, p, u, _ in rows if k == "oyster_tier"]
+    assert ("oyster", 1.5, "ea") in oysters or ("small", 1.5, "ea") in oysters
+    assert any(p == 3.0 and u == "ea" for _k, p, u in oysters)
+
+
 def test_ancient_mariner_multiline_menu_tiers() -> None:
     """Regression: newline-delimited size tiers keep shell context per section."""
     rows = parse_post(ANCIENT_MARINER_MENU)

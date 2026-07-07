@@ -671,7 +671,16 @@ print(f\"Watchdog failure streak: {summary['consecutive_failures']} (escalate at
   fi
   log ""
   log "--- Serve ---"
-  local lan tailnet_url tailnet_dns_url
+  local lan tailnet_url tailnet_dns_url data_dir
+  data_dir="${LOBSTER_ROOT}/data"
+  log "Served directory: ${data_dir} (board.html only; prices.jsonl → 403)"
+  log "Allowed paths: /, /board.html, /index.html (+ /img/* when BOARD_EXTERNAL_LOGOS=1)"
+  log "Server header: SimpleHTTP/0.6 (stdlib ThreadingHTTPServer — path allowlist is the security boundary)"
+  if command -v tailscale >/dev/null 2>&1; then
+    if tailscale funnel status 2>/dev/null | grep -q "Funnel on"; then
+      log "Tailscale Funnel: on (see tailscale funnel status)"
+    fi
+  fi
   lan="$(lan_ip)"
   log "Local:  http://127.0.0.1:${SERVE_PORT}/board.html"
   log "LAN:    http://${lan}:${SERVE_PORT}/board.html"

@@ -127,7 +127,7 @@ def test_oyster_each_and_shucked_pkg_bands():
     )
     assert each.gate_passed, each.reject_reason
     shucked = score_row(
-        ("oyster_tier", "shucked", 21.99, "ea", "Fresh Shucked Oysters in 1 Lb pkg."),
+        ("oyster_tier", "shucked", 21.99, "pkg", "Fresh Shucked Oysters in 1 Lb pkg."),
         source="web",
         observed_at=FRESH_TS,
         full_text="Fresh Shucked Oysters in 1 Lb pkg.",

@@ -7,7 +7,9 @@ import json
 import re
 
 from board_render import _SECTION_META, _format_observed
-from market_logos import logo_data_uri
+from board_meta import board_auto_refresh_seconds, generator_comment
+from font_embed import caveat_font_face_css
+from market_logos import logo_data_uri, logo_src
 
 _PRICE_IN_LABEL = re.compile(r"\$\d+(?:\.\d{2})?")
 
@@ -48,6 +50,8 @@ def _oyster_row_label(item: dict) -> str:
         return label if label.lower() != "oysters" else "each"
     if unit in {"doz", "dozen"}:
         return label if label.lower() != "oysters" else "per dozen"
+    if unit == "pkg":
+        return label if label.lower() != "oysters" else "1 lb pkg"
     return label
 
 
@@ -69,7 +73,7 @@ def _item_label_without_market(item: dict, *, section_key: str) -> str:
 
 def _html_market_sign(market_short: str, *, section_key: str, tilt: float) -> str:
     name = html.escape(market_short)
-    logo_uri = logo_data_uri(market_short)
+    logo_uri = logo_src(market_short)
     if logo_uri:
         inner = (
             f'<img class="market-sign-logo" src="{logo_uri}" alt="{name}" '
@@ -131,6 +135,10 @@ def _html_price_row(item: dict, *, section_key: str, grouped_by_market: bool = F
     if item.get("is_consolidated"):
         row_cls += " is-consolidated"
     amount_cls = "price-amount is-wide" if wide_price else "price-amount"
+    aria = ""
+    if wide_price:
+        unit_plain = unit.replace("/", " per ").strip()
+        aria = f' aria-label="{html.escape(f"{amount} {unit_plain}".strip())}"'
 
     return (
         f'<li class="{row_cls}">'
@@ -139,7 +147,7 @@ def _html_price_row(item: dict, *, section_key: str, grouped_by_market: bool = F
         f"{secondary_html}"
         f"</div>"
         f'<div class="{price_cls}">'
-        f'<span class="{amount_cls}">{amount}</span>'
+        f'<span class="{amount_cls}"{aria}>{amount}</span>'
         f'<span class="price-unit">{unit}</span>'
         f"</div>"
         f"</li>"
@@ -250,18 +258,34 @@ def render_chalk_html(board: dict) -> str:
     if is_demo:
         footer_line = f'<p class="footer-meta">Updated {updated}</p>'
     else:
-        footer_line = f'<p class="footer-meta">Updated {updated}</p>'
+        hint = html.escape(board.get("footer_snapshot_hint", "daily snapshot"))
+        footer_line = (
+            f'<p class="footer-meta">Updated {updated} · {hint}</p>'
+        )
+
+    gen_comment = generator_comment(
+        gated_row_count=int(board.get("gated_row_count", 0)),
+        generated_at=board.get("updated_at"),
+        live_markets=int(board.get("live_market_count", 0)),
+    )
+    refresh_secs = board_auto_refresh_seconds()
+    refresh_meta = (
+        f'  <meta http-equiv="refresh" content="{refresh_secs}">\n'
+        if refresh_secs
+        else ""
+    )
+    font_css = caveat_font_face_css()
 
     html_content = f"""<!DOCTYPE html>
+<!--{gen_comment}-->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(board["title"])}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
-  <style>
+{refresh_meta}  <style>
+    /* --- Self-hosted Caveat (no Google Fonts) --- */
+    {font_css}
     /* --- Design tokens (mobile-first) --- */
     :root {{
       --board-bg: #0c1612;
@@ -291,6 +315,19 @@ def render_chalk_html(board: dict) -> str:
       --price-col-min: 5.5rem;
     }}
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    .skip-link {{
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 100;
+      padding: 0.5rem 1rem;
+      background: var(--chalk);
+      color: var(--board-bg);
+    }}
+    .skip-link:focus {{
+      left: 0.5rem;
+      top: 0.5rem;
+    }}
     body {{
       min-height: 100vh;
       background: #060a08;
@@ -758,8 +795,9 @@ def render_chalk_html(board: dict) -> str:
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#board">Skip to prices</a>
   <div class="board-frame">
-    <div class="board">
+    <main id="board" class="board">
       <header>
         <h1>{html.escape(board["title"])}</h1>
         <p class="subtitle">{html.escape(board["subtitle"])}</p>
@@ -773,7 +811,7 @@ def render_chalk_html(board: dict) -> str:
         {footer_extra}
         {footer_line}
       </footer>
-    </div>
+    </main>
   </div>
 </body>
 </html>"""

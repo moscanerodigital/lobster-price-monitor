@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import http.server
 import json
+import mimetypes
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -14,9 +16,52 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from board_meta import cache_bust_token
+from market_logos import LOGOS_DIR, MARKET_LOGO_SLUGS, logo_path_for_short
 from state import DATA_DIR
 
-ALLOWED_PATHS = frozenset({"/", "/board.html", "/index.html"})
+BASE_ALLOWED_PATHS = frozenset({"/", "/board.html", "/index.html"})
+_IMG_PREFIX = "/img/"
+
+
+def _external_logos_enabled() -> bool:
+    return os.environ.get("BOARD_EXTERNAL_LOGOS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _allowed_paths() -> frozenset[str]:
+    if not _external_logos_enabled():
+        return BASE_ALLOWED_PATHS
+    extra = set()
+    for short in MARKET_LOGO_SLUGS:
+        rel = _logo_request_path(short)
+        if rel:
+            extra.add(rel)
+    return BASE_ALLOWED_PATHS | frozenset(extra)
+
+
+def _logo_request_path(market_short: str) -> str | None:
+    path = logo_path_for_short(market_short)
+    if path is None:
+        return None
+    slug = MARKET_LOGO_SLUGS.get(market_short)
+    if not slug:
+        return None
+    return f"{_IMG_PREFIX}{slug}{path.suffix.lower() or '.webp'}"
+
+
+def _board_cache_token() -> str:
+    board_path = DATA_DIR / "board.html"
+    if not board_path.is_file():
+        return ""
+    text = board_path.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r"generated\s+(\d{4}-\d{2}-\d{2}T[\d:+Z]+)", text)
+    if match:
+        return cache_bust_token(match.group(1))
+    return cache_bust_token("")
 
 
 class BoardHandler(http.server.SimpleHTTPRequestHandler):
@@ -26,16 +71,47 @@ class BoardHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path == "/":
+            token = _board_cache_token()
+            location = "/board.html"
+            if token:
+                location = f"/board.html?v={token}"
             self.send_response(302)
-            self.send_header("Location", "/board.html")
+            self.send_header("Location", location)
+            self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             return
-        if path not in ALLOWED_PATHS:
+        if path not in _allowed_paths():
             self.send_error(403, "Forbidden")
             return
         if path == "/index.html":
             self.path = "/board.html"
+        if path.startswith(_IMG_PREFIX) and _external_logos_enabled():
+            self._serve_logo(path)
+            return
         super().do_GET()
+
+    def _serve_logo(self, path: str) -> None:
+        name = path[len(_IMG_PREFIX) :]
+        file_path = LOGOS_DIR / name
+        if not file_path.is_file():
+            self.send_error(404, "Not found")
+            return
+        data = file_path.read_bytes()
+        ctype = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def end_headers(self) -> None:
+        path = self.path.split("?", 1)[0]
+        if path in {"/board.html", "/index.html"}:
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Content-Type-Options", "nosniff")
+        super().end_headers()
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
@@ -111,12 +187,15 @@ def main() -> int:
     server = http.server.ThreadingHTTPServer((args.host, args.port), handler)
     lan = _lan_ip()
     ts_ip, ts_host = _tailscale_info()
+    print(f"Serving board from {data_dir} (only board.html + allowlisted paths)")
     print(f"Serving board at http://127.0.0.1:{args.port}/board.html")
     print(f"LAN: http://{lan}:{args.port}/board.html")
     if ts_ip:
         print(f"Tailnet: http://{ts_ip}:{args.port}/board.html")
     if ts_host:
         print(f"Tailnet (MagicDNS): http://{ts_host}:{args.port}/board.html")
+    if _external_logos_enabled():
+        print("External logos: /img/*.webp enabled (BOARD_EXTERNAL_LOGOS=1)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -440,7 +440,7 @@ def parse_web_catalog_rows(html: str) -> List[WebCatalogRow]:
                 "pkg" in title_l or "package" in title_l or re.search(r"\d+\s*lb\s*pkg", title_l)
             ):
                 oyster_tier = grade or "shucked"
-                unit = "ea"
+                unit = "pkg"
             elif "shuck" in title_l and "/lb" in title_l:
                 oyster_tier = grade or "shucked"
                 unit = "lb"

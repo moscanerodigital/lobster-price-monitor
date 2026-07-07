@@ -75,7 +75,7 @@ SAMPLES = [
         [
             ("oyster_tier", "select", 24.00, "doz"),
             ("oyster_tier", "xl", 32.00, "doz"),
-            ("oyster_tier", "shucked", 21.99, "ea"),
+            ("oyster_tier", "shucked", 21.99, "pkg"),
         ],
     ),
     (

@@ -69,10 +69,12 @@ _ITEM_LABELS: dict[str, str] = {
 }
 
 _SECTION_META = {
-    "lobster": ("🦞", "LIVE LOBSTER", "lb"),
+    "lobster": ("🦞", "TODAY'S LOBSTER", "lb"),
     "oyster": ("🦪", "OYSTERS", "doz"),
     "special": ("🐟", "TODAY'S SPECIALS", ""),
 }
+
+_BOARD_SUBTITLE = "Gorham base · Maine coast daily snapshot"
 
 # Hand-placed chalk: tilts, spacing, size bumps (deterministic per index)
 _TAG_TILTS = (-2.1, 0.8, 2.4, -1.6, 2.9, -0.5, 1.7, -2.8, 0.3, 1.1, -1.9, 2.2)
@@ -244,6 +246,8 @@ def price_parts(
         return amount, "/doz"
     if unit == "pint":
         return amount, "/pint"
+    if unit == "pkg":
+        return amount, "/pkg"
     return amount, "/lb"
 
 
@@ -903,9 +907,10 @@ def build_board(
         coverage_summary = f"{unavailable_count} markets awaiting feed"
     else:
         coverage_summary = "No live prices yet"
+    gated_row_count = sum(1 for r in all_prices if r.get("gate_passed"))
     return {
         "title": "MAINE COAST SEAFOOD BOARD",
-        "subtitle": "Gorham base · Maine coast watchlist",
+        "subtitle": _BOARD_SUBTITLE,
         "updated_at": latest_ts or now.isoformat(),
         "display_date": now.astimezone().strftime("%A, %B %-d").replace(" 0", " "),
         "sections": sections,
@@ -918,6 +923,8 @@ def build_board(
         "live_market_names": live_names,
         "total_items": sum(len(v) for v in sections.values()),
         "trends": _calculate_historical_trends(all_prices),
+        "gated_row_count": gated_row_count,
+        "footer_snapshot_hint": "daily snapshot · updates after each scrape",
     }
 
 
@@ -927,7 +934,7 @@ def _demo_board() -> dict:
     coverage = _board_market_coverage(set())
     return {
         "title": "MAINE COAST SEAFOOD BOARD",
-        "subtitle": "Gorham base · Maine coast watchlist",
+        "subtitle": _BOARD_SUBTITLE,
         "updated_at": now,
         "display_date": datetime.now(timezone.utc).strftime("%A, %B %d"),
         "sections": {

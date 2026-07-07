@@ -332,6 +332,11 @@ def _price_in_band(kind: str, key: str, price: float, unit: str) -> tuple[bool, 
             if _OYSTER_EACH_BAND[0] <= price <= _OYSTER_EACH_BAND[1]:
                 return True, None
             return False, f"gate_c:price_out_of_band:{price}"
+        if unit == "pkg":
+            slo, shi = _OYSTER_SHUCKED_PKG_BAND
+            if slo <= price <= shi:
+                return True, None
+            return False, f"gate_c:price_out_of_band:{price}"
         if unit == "lb" and lo / 12 <= price <= hi / 12:
             return True, None
         return False, f"gate_c:price_out_of_band:{price}"

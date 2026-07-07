@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -77,6 +78,24 @@ def logo_data_uri(market_short: str) -> str | None:
     mime = mimetypes.guess_type(path.name)[0] or "image/webp"
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime};base64,{encoded}"
+
+
+def logo_external_path(market_short: str) -> str | None:
+    """Relative /img/ path when BOARD_EXTERNAL_LOGOS=1."""
+    slug = MARKET_LOGO_SLUGS.get(market_short)
+    if not slug or logo_path_for_short(market_short) is None:
+        return None
+    path = logo_path_for_short(market_short)
+    assert path is not None
+    ext = path.suffix.lower() or ".webp"
+    return f"/img/{slug}{ext}"
+
+
+def logo_src(market_short: str) -> str | None:
+    """Logo src for HTML — external path or inline data URI (default)."""
+    if os.environ.get("BOARD_EXTERNAL_LOGOS", "").strip().lower() in {"1", "true", "yes"}:
+        return logo_external_path(market_short)
+    return logo_data_uri(market_short)
 
 
 def all_configured_shorts() -> tuple[str, ...]:

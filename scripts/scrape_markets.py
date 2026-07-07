@@ -817,6 +817,14 @@ def main(*, send_alerts: bool = False) -> int:
 
             board_path = write_html_board()
             print(f"  [board] wrote {board_path}", flush=True)
+            try:
+                from archive_board import archive_board
+
+                archived = archive_board(board_path=board_path)
+                if archived:
+                    print(f"  [archive] wrote {archived}", flush=True)
+            except Exception as e:
+                print(f"  [archive error] {type(e).__name__}: {e}", file=sys.stderr)
         except Exception as e:
             print(f"  [board error] {type(e).__name__}: {e}", file=sys.stderr)
     else:

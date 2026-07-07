@@ -74,6 +74,69 @@ def test_board_has_three_sections() -> None:
         assert f"section-{section}" in html
 
 
+def test_todays_lobster_heading() -> None:
+    import os
+
+    from board_render import build_board, render_html
+
+    old = os.environ.get("BOARD_AUTO_REFRESH")
+    os.environ["BOARD_AUTO_REFRESH"] = "0"
+    try:
+        html = render_html(build_board())
+    finally:
+        if old is None:
+            os.environ.pop("BOARD_AUTO_REFRESH", None)
+        else:
+            os.environ["BOARD_AUTO_REFRESH"] = old
+    assert (
+        "TODAY'S LOBSTER" in html
+        or "TODAY&#39;S LOBSTER" in html
+        or "TODAY&#x27;S LOBSTER" in html
+    )
+    assert "LIVE LOBSTER" not in html
+
+
+def test_main_landmark_and_skip_link() -> None:
+    html = _board_html()
+    assert '<main id="board"' in html
+    assert 'href="#board"' in html
+
+
+def test_no_google_fonts() -> None:
+    import os
+
+    from board_render import build_board, render_html
+
+    old = os.environ.get("BOARD_AUTO_REFRESH")
+    os.environ["BOARD_AUTO_REFRESH"] = "0"
+    try:
+        html = render_html(build_board())
+    finally:
+        if old is None:
+            os.environ.pop("BOARD_AUTO_REFRESH", None)
+        else:
+            os.environ["BOARD_AUTO_REFRESH"] = old
+    assert "fonts.googleapis.com" not in html
+    assert "built by lobster-price-monitor" in html
+
+
+def test_daily_snapshot_subtitle() -> None:
+    import os
+
+    from board_render import build_board, render_html
+
+    old = os.environ.get("BOARD_AUTO_REFRESH")
+    os.environ["BOARD_AUTO_REFRESH"] = "0"
+    try:
+        html = render_html(build_board())
+    finally:
+        if old is None:
+            os.environ.pop("BOARD_AUTO_REFRESH", None)
+        else:
+            os.environ["BOARD_AUTO_REFRESH"] = old
+    assert "daily snapshot" in html
+
+
 def test_lobster_grouped_label_strips_duplicate_prices() -> None:
     from chalk_board_html import _lobster_grouped_label
 
@@ -140,6 +203,10 @@ def main() -> int:
         test_market_groups_no_nested_scroll,
         test_desktop_logo_size_at_least_80px,
         test_board_has_three_sections,
+        test_todays_lobster_heading,
+        test_main_landmark_and_skip_link,
+        test_no_google_fonts,
+        test_daily_snapshot_subtitle,
         test_lobster_grouped_label_strips_duplicate_prices,
         test_no_duplicate_dollar_in_grouped_lobster_rows,
         test_no_broken_trends_with_single_point,

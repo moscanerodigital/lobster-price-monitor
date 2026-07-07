@@ -7,6 +7,21 @@
 **Wave 3 complete (2026-07-06):** B-05 runtime guard, B-04 tests, C-03 visual QA, D-04 scrape (partial coverage), E-03 dev verify + serving-host runbook below.  
 **Wave 4 complete (2026-07-06):** A-05 menu Gate B, A-06 oyster units, D-05 FB fetch (6/9 curl markets), E-04 deploy at `~/lobster-price-monitor` (MacBook Pro stand-in; Mac Mini/Chromebox use same runbook).
 
+### Wave 5 completion metrics (Hermes audit — 2026-07-07)
+
+| Metric | Result | Notes |
+|--------|--------|-------|
+| Honest framing | done | `TODAY'S LOBSTER`, daily snapshot subtitle, footer snapshot hint |
+| Pipeline comment in HTML | done | `board_meta.generator_comment` in every `board.html` |
+| Serve hardening | done | `Cache-Control: no-cache`, 403 on `prices.jsonl`, `test_serve_board.py` |
+| Auto-refresh | done | `BOARD_AUTO_REFRESH=300` (off in `make board-html`) |
+| Self-hosted Caveat | done | `assets/fonts/Caveat-Variable.ttf` embedded — no Google Fonts |
+| Board archival | done | `archive_board.py` post-publish hook |
+| Gated rows (post-scrape) | 51 | Publish guard floor 40; thinner than Jul 6 QA (~67–90) after confirmation scrape |
+| Oysters (board) | 3 | D-04 ≥5 still open (A-07 partial) |
+
+**Mac mini / Chromebox:** `make mirror-host HOST=mac-mini` requires SSH pubkey on remote — see DEPLOYMENT § Multi-host.
+
 ### Wave 4 completion metrics (dev scrape 2026-07-06T18:22Z)
 
 | Metric | Result | D-04 bar | Notes |

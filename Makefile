@@ -4,7 +4,7 @@ VENV   ?= .venv
 PORT   ?= 8765
 BIND   ?= 0.0.0.0
 
-.PHONY: install scrape serve serve-tailnet health verify verify-core verify-visual test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host redeploy-host rebuild-host reprovision-host status-host watchdog-host recover-host regen-bplus-fixtures import-five-islands sync-scrape-state
+.PHONY: install scrape serve serve-tailnet health verify verify-core verify-visual test seed-ci-fixtures seed-ci-bplus-fixtures verify-ci verify-next-ci verify-production-ci verify-ops-ci verify-deploy-ci verify-deploy verify-ops promote-ops demote-ops install-scheduler uninstall-scheduler bootstrap-host deploy-host teardown-host upgrade-host redeploy-host rebuild-host reprovision-host status-host watchdog-host recover-host regen-bplus-fixtures import-five-islands sync-scrape-state archive-board mirror-host
 
 install:
 	python3 -m venv $(VENV)
@@ -29,7 +29,14 @@ sync-scrape-state:
 	cd "$(LOBSTER_ROOT)" && $(MAKE) board-html PYTHON=$(LOBSTER_ROOT)/.venv/bin/python
 
 board-html:
-	$(PYTHON) scripts/board.py --html
+	BOARD_AUTO_REFRESH=0 $(PYTHON) scripts/board.py --html
+
+archive-board:
+	$(PYTHON) scripts/archive_board.py
+
+mirror-host:
+	@test -n "$(HOST)" || (echo "Usage: make mirror-host HOST=mac-mini" && exit 1)
+	ssh $(HOST) 'cd ~/lobster-price-monitor && git pull --ff-only && make recover-host'
 
 serve serve-tailnet:
 	$(PYTHON) scripts/serve_board.py --port $(PORT) --host $(BIND)
@@ -78,6 +85,9 @@ verify-core:
 	$(PYTHON) scripts/test_scrape_publish_gate.py
 	$(PYTHON) scripts/test_board_lobster.py
 	$(PYTHON) scripts/test_fb_curl_fetch.py
+	$(PYTHON) scripts/test_board_meta.py
+	$(PYTHON) scripts/test_serve_board.py
+	$(PYTHON) scripts/test_archive_board.py
 
 verify-visual:
 	$(PYTHON) scripts/test_board_visual.py
